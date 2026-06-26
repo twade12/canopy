@@ -20,6 +20,25 @@ from canopy.trace import BlfTraceLogger, default_trace_path, read_trace
 
 app = typer.Typer(add_completion=False, help="CANOPY CAN test station CLI (Phase 0).")
 
+BANNER = r"""
+   ██████╗ █████╗ ███╗   ██╗ ██████╗ ██████╗ ██╗   ██╗
+  ██╔════╝██╔══██╗████╗  ██║██╔═══██╗██╔══██╗╚██╗ ██╔╝
+  ██║     ███████║██╔██╗ ██║██║   ██║██████╔╝ ╚████╔╝
+  ██║     ██╔══██║██║╚██╗██║██║   ██║██╔═══╝   ╚██╔╝
+  ╚██████╗██║  ██║██║ ╚████║╚██████╔╝██║        ██║
+   ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝        ██║
+   Universal CAN Module Test & Diagnostic Station
+"""
+
+
+@app.callback(invoke_without_command=True)
+def _root(ctx: typer.Context) -> None:
+    """Show the banner and help when invoked with no subcommand."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(BANNER)
+        typer.echo(ctx.get_help())
+        raise typer.Exit()
+
 
 def _parse_id(value: str) -> int:
     """Parse a CAN id given as hex (``0x123``/``123``) or decimal (``291``)."""

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 380" width="1180" height="380" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0C1A14"/>
+      <stop offset="1" stop-color="#081109"/>
+    </linearGradient>
+    <radialGradient id="leaf" cx="0.4" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#7CF0BC"/>
+      <stop offset="0.45" stop-color="#10B981"/>
+      <stop offset="1" stop-color="#046C4E"/>
+    </radialGradient>
+    <linearGradient id="trunk" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5A4632"/>
+      <stop offset="1" stop-color="#3C2E20"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F4FFF9"/>
+      <stop offset="1" stop-color="#C7F5DF"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="380" rx="34" fill="url(#panel)"/>
+  <rect x="3" y="3" width="1174" height="374" rx="31" fill="none" stroke="#103226" stroke-width="2"/>
+
+  <!-- emblem: canopy + trunk -->
+  <g>
+    <rect x="139" y="168" width="22" height="120" rx="9" fill="url(#trunk)"/>
+    <circle cx="150" cy="132" r="66" fill="url(#leaf)"/>
+    <circle cx="96" cy="152" r="44" fill="url(#leaf)"/>
+    <circle cx="204" cy="152" r="44" fill="url(#leaf)"/>
+    <circle cx="118" cy="102" r="42" fill="url(#leaf)"/>
+    <circle cx="182" cy="102" r="42" fill="url(#leaf)"/>
+    <circle cx="150" cy="84" r="38" fill="url(#leaf)"/>
+  </g>
+
+  <!-- CAN differential bus: ground line + the two lines -->
+  <line x1="60" y1="286" x2="1120" y2="286" stroke="#14342733" stroke-width="2"/>
+  <polyline points="250.0,286.0 250.0,260.0 302.5,260.0 302.5,260.0 302.5,286.0 355.0,286.0 355.0,286.0 355.0,260.0 407.5,260.0 407.5,260.0 407.5,260.0 460.0,260.0 460.0,260.0 460.0,286.0 512.5,286.0 512.5,286.0 512.5,260.0 565.0,260.0 565.0,260.0 565.0,286.0 617.5,286.0 617.5,286.0 617.5,286.0 670.0,286.0 670.0,286.0 670.0,260.0 722.5,260.0 722.5,260.0 722.5,260.0 775.0,260.0 775.0,260.0 775.0,286.0 827.5,286.0 827.5,286.0 827.5,260.0 880.0,260.0 880.0,260.0 880.0,286.0 932.5,286.0 932.5,286.0 932.5,260.0 985.0,260.0 985.0,260.0 985.0,260.0 1037.5,260.0 1037.5,260.0 1037.5,286.0 1090.0,286.0 1090.0,286.0" fill="none" stroke="#34D399" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <polyline points="250.0,286.0 250.0,312.0 302.5,312.0 302.5,312.0 302.5,286.0 355.0,286.0 355.0,286.0 355.0,312.0 407.5,312.0 407.5,312.0 407.5,312.0 460.0,312.0 460.0,312.0 460.0,286.0 512.5,286.0 512.5,286.0 512.5,312.0 565.0,312.0 565.0,312.0 565.0,286.0 617.5,286.0 617.5,286.0 617.5,286.0 670.0,286.0 670.0,286.0 670.0,312.0 722.5,312.0 722.5,312.0 722.5,312.0 775.0,312.0 775.0,312.0 775.0,286.0 827.5,286.0 827.5,286.0 827.5,312.0 880.0,312.0 880.0,312.0 880.0,286.0 932.5,286.0 932.5,286.0 932.5,312.0 985.0,312.0 985.0,312.0 985.0,312.0 1037.5,312.0 1037.5,312.0 1037.5,286.0 1090.0,286.0 1090.0,286.0" fill="none" stroke="#22D3EE" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <text x="1098" y="254" fill="#34D399" font-size="20" font-weight="bold">H</text>
+  <text x="1098" y="332" fill="#22D3EE" font-size="20" font-weight="bold">L</text>
+
+  <!-- wordmark -->
+  <text x="250" y="170" fill="url(#word)" font-size="132" font-weight="bold" letter-spacing="2">CANOPY</text>
+  <text x="258" y="222" fill="#6FA98F" font-size="23" font-weight="bold" letter-spacing="2.3">UNIVERSAL CAN MODULE TEST &amp; DIAGNOSTIC STATION</text>
+</svg>
