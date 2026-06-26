@@ -1,0 +1,25 @@
+# Postgres with TimescaleDB + pgvector for CANOPY case/trace storage.
+# The timescaledb-ha image bundles both the TimescaleDB and pgvector extensions.
+# Extensions are enabled on first boot via the init script in ./db/init.
+services:
+  db:
+    image: timescale/timescaledb-ha:pg16
+    container_name: canopy-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: canopy
+      POSTGRES_PASSWORD: canopy
+      POSTGRES_DB: canopy
+    ports:
+      - "5432:5432"
+    volumes:
+      - canopy-pgdata:/home/postgres/pgdata/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U canopy -d canopy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  canopy-pgdata:
