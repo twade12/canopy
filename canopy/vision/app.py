@@ -147,7 +147,7 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             return await call_next(request)
         path = request.url.path
         # /m (mobile capture) + /api/pair/* are gated by a pairing token, not the password.
-        if (path in ("/login", "/api/login", "/healthz", "/m")
+        if (path in ("/login", "/api/login", "/healthz", "/m", "/favicon.ico")
                 or path.startswith("/static") or path.startswith("/api/pair/")):
             return await call_next(request)
         if auth.valid_token(secret, request.cookies.get(auth.COOKIE)):
@@ -159,6 +159,10 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict:
         return {"ok": True}
+
+    @app.get("/favicon.ico")
+    def favicon() -> FileResponse:
+        return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
 
     @app.get("/login")
     def login_page() -> FileResponse:

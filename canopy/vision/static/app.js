@@ -5,7 +5,7 @@ const ICON = {
   diagram: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
   pinout: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/>',
   plan: '<path d="M4 6h16M4 12h16M4 18h10"/><circle cx="20" cy="18" r="1.5"/>',
-  chat: '<path d="M4 5h16v11H8l-4 4z"/>', memory: '<path d="M9 3a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V6a3 3 0 00-3-3z"/>',
+  chat: '<path d="M4 5h16v11H8l-4 4z"/>', memory: '<path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/>',
   record: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h6M7 13h10"/>',
   api: '<path d="M8 3H5v18h3M16 3h3v18h-3M9 12h6"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/>',
@@ -230,7 +230,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; this.renderRecords(); renderDock(); },
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = 1; this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
   viewDiagram(c) {
@@ -437,6 +437,13 @@ const ui = {
 
   // ---------- guided repair triage ----------
   viewTriage(c) {
+    // Render messages INLINE (not via getElementById afterward) so moving/redocking tabs —
+    // which rebuilds the tree detached before attaching — never loses the transcript.
+    const msgs = state.triageMsgs;
+    const body = msgs == null
+      ? '<div class="empty"><span class="spinner"></span></div>'
+      : (msgs.map(m => `<div class="msg ${m.role}"><div class="md">${md(m.content)}</div></div>`).join('')
+         || '<div class="empty">Start a guided triage — describe the symptom or attach a board photo.</div>');
     c.innerHTML = `<div class="chat"><div class="chips">
         <span class="chip" onclick="ui.fillTriage('The symptom is: ')">Describe symptom</span>
         <span class="chip" onclick="ui.attachTriagePhoto()">${svg('upload')} Attach photo</span>
@@ -444,15 +451,16 @@ const ui = {
         <span class="chip" onclick="ui.askTriage('Analyze the attached PCB photo: identify the components and what to check on each, and which tool to use.')">Analyze PCB</span>
         <span class="chip" onclick="ui.askTriage('Which serial/diagnostic protocols does this module use, and which OBD-II pins are relevant?')">Protocols / OBD-II</span>
         <span class="chip" onclick="ui.triageReport()">Generate report</span></div>
-      <div class="messages" id="tMsgs"><div class="empty"><span class="spinner"></span></div></div>
+      <div class="messages" id="tMsgs">${body}</div>
       <div id="tAttach" class="muted" style="font-size:11.5px;min-height:16px"></div>
       <div class="chat-input"><textarea id="tIn" placeholder="Describe what you see / measured; ask for the next step…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ui.sendTriage();}"></textarea>
         <button class="iconbtn" title="Attach photo" onclick="ui.attachTriagePhoto()">${svg('upload')}</button><button class="primary" onclick="ui.sendTriage()">Send</button></div>
       <div class="muted" style="margin-top:5px;font-size:11px">Guided diagnosis using this project's pinout + accumulated knowledge. Attach photos of the board, scope, or meter.</div></div>`;
-    if (state.triageMsgs == null) this.loadTriage(); else this.renderTriageMsgs();
-    if (state.triageImage) { const a = el('tAttach'); if (a) a.textContent = 'photo attached — sends with your next message'; }
+    if (msgs == null) this.loadTriage();
+    else { const b = c.querySelector('#tMsgs'); if (b) b.scrollTop = b.scrollHeight; }
+    if (state.triageImage) { const a = c.querySelector('#tAttach'); if (a) a.textContent = 'photo attached — sends with your next message'; }
   },
-  async loadTriage() { try { state.triageMsgs = await api.get(`/api/vehicles/${state.current.id}/triage/messages`); } catch { state.triageMsgs = []; } this.renderTriageMsgs(); },
+  async loadTriage() { try { state.triageMsgs = await api.get(`/api/vehicles/${state.current.id}/triage/messages`); } catch { state.triageMsgs = []; } rerenderView('triage'); },
   renderTriageMsgs() { const box = el('tMsgs'); if (!box) return; const msgs = state.triageMsgs || []; box.innerHTML = msgs.map(m => `<div class="msg ${m.role}"><div class="md">${md(m.content)}</div></div>`).join('') || '<div class="empty">Start a guided triage — describe the symptom or attach a board photo.</div>'; box.scrollTop = box.scrollHeight; },
   fillTriage(q) { ensureView('triage'); const i = el('tIn'); if (i) { i.value = q; i.focus(); } },
   askTriage(q) { ensureView('triage'); this.sendTriage(q); },
@@ -498,10 +506,12 @@ const ui = {
     const sel = state.pcbSel != null ? comps[state.pcbSel] : null;
     const boxes = comps.map((p, i) => { const [x0, y0, x1, y1] = p.box; const on = i === state.pcbSel;
       return `<div class="pcb-box ${on ? 'sel' : 'dim'}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})">${on ? `<span class="lbl">${esc(p.label)}</span>` : ''}</div>`; }).join('');
+    const z = state.pcbZoom || 1;
     c.innerHTML = `<div class="pcb-col">
-      <div class="row" style="margin-bottom:8px"><button onclick="ui.pcbPick()">${svg('upload')} New photo</button><button onclick="ui.phoneModal()">${svg('phone')} Pair phone</button><button onclick="ui.exportPcb()">${svg('chip')} Save annotated PNG</button></div>
+      <div class="row" style="margin-bottom:8px"><button onclick="ui.pcbPick()">${svg('upload')} New photo</button><button onclick="ui.phoneModal()">${svg('phone')} Pair phone</button><button onclick="ui.exportPcb()">${svg('chip')} Save annotated PNG</button>
+        <div class="zoomctl"><button class="iconbtn" onclick="ui.pcbZoom(-1)">${svg('zout')}</button><span id="pcbZlbl">${Math.round(z * 100)}%</span><button class="iconbtn" onclick="ui.pcbZoom(1)">${svg('zin')}</button><button class="iconbtn" title="Fit height" onclick="ui.pcbZoom(0)">${svg('reset')}</button></div></div>
       <div class="pcb-layout">
-        <div class="pcb-stage"><div class="pcb-wrap"><img src="${state.pcbImage}" alt="PCB"><div style="position:absolute;inset:0">${boxes}</div></div></div>
+        <div class="pcb-stage"><div class="pcb-wrap" style="height:${z * 100}%"><img src="${state.pcbImage}" alt="PCB"><div style="position:absolute;inset:0">${boxes}</div></div></div>
         <div class="pcb-side">
           <div class="muted" style="font-size:11px;margin-bottom:6px">${comps.length} components — click one to highlight it on the board</div>
           <div class="pcb-list">${comps.map((p, i) => `<div class="pcb-item ${i === state.pcbSel ? 'sel' : ''}" onclick="ui.selectPcb(${i})"><div class="pi-top"><span class="pi-label">${esc(p.label)}</span><span class="pi-conf">${Math.round(p.confidence * 100)}%</span></div><div class="pi-detail">${esc(p.check)}</div></div>`).join('')}</div>
@@ -527,13 +537,16 @@ const ui = {
   },
   pcbPick() { if (!state.pcbFileInput) { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.onchange = e => { if (e.target.files[0]) this.pcbUpload(e.target.files[0]); }; state.pcbFileInput = inp; } state.pcbFileInput.value = ''; state.pcbFileInput.click(); },
   async pcbUpload(file) {
-    const r = new FileReader(); r.onload = async () => { state.pcbImage = r.result; state.pcbSel = null;
+    const r = new FileReader(); r.onload = async () => { state.pcbImage = r.result; state.pcbSel = null; state.pcbZoom = 1;
       await this.busy(null, 'analyzing board…', async () => { aiToast.show('Analyzing PCB…');
         const res = await api.send(`/api/vehicles/${state.current.id}/pcb`, 'POST', { image: r.result });
         state.pcbComponents = res.components || []; rerenderView('pcb'); aiToast.done(`${state.pcbComponents.length} components`); });
     }; r.readAsDataURL(file);
   },
   selectPcb(i) { state.pcbSel = state.pcbSel === i ? null : i; rerenderView('pcb'); },
+  pcbZoom(dir) { state.pcbZoom = dir === 0 ? 1 : Math.max(0.5, Math.min(5, (state.pcbZoom || 1) + dir * 0.25));
+    const w = document.querySelector('.pcb-wrap'); if (w) w.style.height = (state.pcbZoom * 100) + '%';
+    const l = el('pcbZlbl'); if (l) l.textContent = Math.round(state.pcbZoom * 100) + '%'; },
   pcbToTriage(i) { state.triageImage = state.pcbImage; ensureView('triage'); const sel = i != null ? state.pcbComponents[i] : null;
     const txt = sel ? `About the ${sel.label} on this board: ` : 'Here is the ECU board photo. The symptom is: ';
     const inp = el('tIn'); if (inp) { inp.value = txt; inp.focus(); } const a = el('tAttach'); if (a) a.textContent = 'board photo attached — sends with your next message'; },
@@ -559,7 +572,7 @@ const ui = {
   async fetchDataUrl(url) { const r = await fetch(url); const b = await r.blob(); return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }); },
   async phoneUse(attId, target) {
     const dataUrl = await this.fetchDataUrl(`/api/attachment/${attId}/image`); closeModal();
-    if (target === 'pcb') { state.pcbImage = dataUrl; state.pcbSel = null; ensureView('pcb'); aiToast.show('Analyzing PCB…');
+    if (target === 'pcb') { state.pcbImage = dataUrl; state.pcbSel = null; state.pcbZoom = 1; ensureView('pcb'); aiToast.show('Analyzing PCB…');
       try { const res = await api.send(`/api/vehicles/${state.current.id}/pcb`, 'POST', { image: dataUrl }); state.pcbComponents = res.components || []; rerenderView('pcb'); aiToast.done(`${state.pcbComponents.length} components`); }
       catch (e) { aiToast.done('Error'); alert(e.message); }
     } else { state.triageImage = dataUrl; ensureView('triage'); const i = el('tIn'); if (i) { i.value = 'Here is a photo of the board: '; i.focus(); } const a = el('tAttach'); if (a) a.textContent = 'phone photo attached — sends with your next message'; }
