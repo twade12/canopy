@@ -18,7 +18,9 @@ from canopy.vision.prompts import (
     EXTRACT_SYSTEM,
     IDENTIFY_SYSTEM,
     MEMORY_SUGGEST_SYSTEM,
+    REPORT_SYSTEM,
     TAGS_SYSTEM,
+    TRIAGE_SYSTEM,
 )
 
 
@@ -28,6 +30,24 @@ def assistant_stream(client: OllamaClient, question: str, *, context: str, histo
     messages.extend(history)
     messages.append(ChatMessage("user", question))
     yield from client.chat_stream(messages, temperature=0.3)
+
+
+def triage_stream(client: OllamaClient, message: str, *, context: str, history: list,
+                  images: list[str]):
+    """Stream a guided repair-triage answer (multimodal: may include a board/scope photo)."""
+    messages = [ChatMessage("system", TRIAGE_SYSTEM + "\n\n" + context)]
+    messages.extend(history)
+    messages.append(ChatMessage("user", message, images=images))
+    yield from client.chat_stream(messages, temperature=0.3)
+
+
+def repair_report(client: OllamaClient, transcript: str, facts: str) -> str:
+    """Compile a triage transcript + module facts into a Markdown repair report."""
+    messages = [
+        ChatMessage("system", REPORT_SYSTEM),
+        ChatMessage("user", f"MODULE FACTS:\n{facts}\n\nTRIAGE TRANSCRIPT:\n{transcript}"),
+    ]
+    return client.chat(messages, temperature=0.2)
 
 
 def cosine(a: list[float], b: list[float]) -> float:

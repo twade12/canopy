@@ -18,11 +18,13 @@ const ICON = {
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
+  triage: '<path d="M21 4a4 4 0 01-5.6 5.6L7 18l-2-2 8.4-8.4A4 4 0 0119 2l-3 3 1.5 1.5L21 4z"/>',
 };
 const svg = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON[n] || ''}</svg>`;
 const VIEWS = [
   { key: 'diagram', label: 'Diagram', icon: 'diagram' }, { key: 'pinout', label: 'Pinout', icon: 'pinout' },
   { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
+  { key: 'triage', label: 'Triage', icon: 'triage' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
@@ -73,7 +75,7 @@ function defaultDock() { state.gid = 1; const g = () => state.gid++;
     { t: 'g', id: g(), tabs: ['diagram'], active: 'diagram' },
     { t: 's', dir: 'col', sizes: [58, 42], kids: [
       { t: 'g', id: g(), tabs: ['pinout', 'record'], active: 'pinout' },
-      { t: 'g', id: g(), tabs: ['chat', 'plan', 'memories', 'api'], active: 'chat' }] }] }; }
+      { t: 'g', id: g(), tabs: ['chat', 'triage', 'plan', 'memories', 'api'], active: 'chat' }] }] }; }
 function saveDock() { try { localStorage.setItem('canopy-dock', JSON.stringify(state.dock)); } catch {} }
 function loadDock() { try { const d = JSON.parse(localStorage.getItem('canopy-dock')); if (d && d.t) { let mx = 0; (function walk(n){ if (n.t === 'g') mx = Math.max(mx, n.id); else n.kids.forEach(walk); })(d); state.gid = mx + 1; return d; } } catch {} return defaultDock(); }
 const parentOf = (node, t) => { if (node.t !== 's') return null; for (let i = 0; i < node.kids.length; i++) { if (node.kids[i] === t) return { parent: node, idx: i }; const r = parentOf(node.kids[i], t); if (r) return r; } return null; };
@@ -180,7 +182,7 @@ function renderViewInto(view, c) {
   const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch };
   if (globals[view]) return globals[view].call(ui, c);
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
-  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, memories: ui.viewMemories, record: ui.viewRecord })[view].call(ui, c);
+  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, memories: ui.viewMemories, record: ui.viewRecord })[view].call(ui, c);
 }
 
 // ================= UI =================
@@ -226,7 +228,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; this.renderRecords(); renderDock(); },
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
   viewDiagram(c) {
@@ -430,6 +432,55 @@ const ui = {
   async benchSend() {
     try { await api.send('/api/can/send', 'POST', { id: el('bFid').value, data: el('bFdata').value }); } catch (e) { alert(e.message); }
   },
+
+  // ---------- guided repair triage ----------
+  viewTriage(c) {
+    c.innerHTML = `<div class="chat"><div class="chips">
+        <span class="chip" onclick="ui.fillTriage('The symptom is: ')">Describe symptom</span>
+        <span class="chip" onclick="ui.attachTriagePhoto()">${svg('upload')} Attach board / scope photo</span>
+        <span class="chip" onclick="ui.askTriage('Analyze the attached PCB photo: identify the components and what to check on each, and which tool to use.')">Analyze PCB</span>
+        <span class="chip" onclick="ui.askTriage('Which serial/diagnostic protocols does this module use, and which OBD-II pins are relevant?')">Protocols / OBD-II</span>
+        <span class="chip" onclick="ui.triageReport()">Generate report</span></div>
+      <div class="messages" id="tMsgs"><div class="empty"><span class="spinner"></span></div></div>
+      <div id="tAttach" class="muted" style="font-size:11.5px;min-height:16px"></div>
+      <div class="chat-input"><textarea id="tIn" placeholder="Describe what you see / measured; ask for the next step…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ui.sendTriage();}"></textarea>
+        <button class="iconbtn" title="Attach photo" onclick="ui.attachTriagePhoto()">${svg('upload')}</button><button class="primary" onclick="ui.sendTriage()">Send</button></div>
+      <div class="muted" style="margin-top:5px;font-size:11px">Guided diagnosis using this project's pinout + accumulated knowledge. Attach photos of the board, scope, or meter.</div></div>`;
+    if (state.triageMsgs == null) this.loadTriage(); else this.renderTriageMsgs();
+    if (state.triageImage) { const a = el('tAttach'); if (a) a.textContent = 'photo attached — sends with your next message'; }
+  },
+  async loadTriage() { try { state.triageMsgs = await api.get(`/api/vehicles/${state.current.id}/triage/messages`); } catch { state.triageMsgs = []; } this.renderTriageMsgs(); },
+  renderTriageMsgs() { const box = el('tMsgs'); if (!box) return; const msgs = state.triageMsgs || []; box.innerHTML = msgs.map(m => `<div class="msg ${m.role}"><div class="md">${md(m.content)}</div></div>`).join('') || '<div class="empty">Start a guided triage — describe the symptom or attach a board photo.</div>'; box.scrollTop = box.scrollHeight; },
+  fillTriage(q) { ensureView('triage'); const i = el('tIn'); if (i) { i.value = q; i.focus(); } },
+  askTriage(q) { ensureView('triage'); this.sendTriage(q); },
+  attachTriagePhoto() {
+    if (!state.triageFileInput) { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { state.triageImage = r.result; const a = el('tAttach'); if (a) a.textContent = 'photo attached — sends with your next message'; }; r.readAsDataURL(f); };
+      state.triageFileInput = inp; }
+    state.triageFileInput.value = ''; state.triageFileInput.click();
+  },
+  async sendTriage(forced) {
+    const input = el('tIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q || !state.current) return; if (input) input.value = '';
+    const box = el('tMsgs'); if (box && box.querySelector('.empty')) box.innerHTML = '';
+    const img = state.triageImage; state.triageImage = null; const a = el('tAttach'); if (a) a.textContent = '';
+    box.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div>${img ? `<img src="${img}" style="max-width:170px;border-radius:8px;margin-top:6px;display:block">` : ''}</div>`);
+    const aId = 't' + Date.now(); box.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`); box.scrollTop = box.scrollHeight;
+    const history = (state.triageMsgs || []).slice(-8); state.triageMsgs = [...(state.triageMsgs || []), { role: 'user', content: q }]; let full = '';
+    aiToast.show('Triaging…', true);
+    await this.stream(`/api/vehicles/${state.current.id}/triage/stream`, { message: q, image: img || '', history },
+      tok => { full += tok; aiToast.append(tok); const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); const b = el('tMsgs'); if (b) b.scrollTop = b.scrollHeight; } },
+      () => { aiToast.done('Done'); const m = el(aId + '-md'); if (m) m.classList.remove('cursor-blink'); state.triageMsgs.push({ role: 'assistant', content: full }); },
+      e => { aiToast.done('Error'); const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e)}</span>`; });
+  },
+  async triageReport() {
+    if (!state.current) return; aiToast.show('Writing report…');
+    try { const r = await api.send(`/api/vehicles/${state.current.id}/report`, 'POST'); state.lastReport = r.report; aiToast.done('Report ready');
+      const m = document.createElement('div'); m.className = 'modal'; m.style.width = 'min(760px,94vw)';
+      m.innerHTML = `<div class="m-head">${svg('record')} Repair report</div><div class="m-body md" style="max-height:68vh;overflow:auto">${md(r.report)}</div><div class="m-foot"><button onclick="ui.copyReport()">Copy Markdown</button><button class="primary" onclick="closeModal()">Close</button></div>`;
+      showModal(m);
+    } catch (e) { aiToast.done('Error'); alert(e.message); }
+  },
+  copyReport() { if (state.lastReport) navigator.clipboard?.writeText(state.lastReport); aiToast.show('Copied'); aiToast.hide(1200); },
 
   // ---------- deep research ----------
   viewResearch(c) {

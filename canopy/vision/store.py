@@ -61,7 +61,13 @@ CREATE TABLE IF NOT EXISTS tag (
 CREATE TABLE IF NOT EXISTS message (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
-    role TEXT NOT NULL, content TEXT NOT NULL,
+    role TEXT NOT NULL, content TEXT NOT NULL, channel TEXT DEFAULT 'chat',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS attachment (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
+    path TEXT NOT NULL, kind TEXT DEFAULT 'photo', note TEXT,
     created_at TEXT NOT NULL
 );
 """
@@ -97,6 +103,9 @@ class Store:
         mem = {r["name"] for r in self._conn.execute("PRAGMA table_info(memory)")}
         if "embedding" not in mem:
             self._conn.execute("ALTER TABLE memory ADD COLUMN embedding TEXT")
+        msg = {r["name"] for r in self._conn.execute("PRAGMA table_info(message)")}
+        if "channel" not in msg:
+            self._conn.execute("ALTER TABLE message ADD COLUMN channel TEXT DEFAULT 'chat'")
 
     def close(self) -> None:
         self._conn.close()
@@ -296,19 +305,44 @@ class Store:
         ).fetchall()
         return [r["tag"] for r in rows]
 
-    # --- chat ------------------------------------------------------------------
-    def add_message(self, vehicle_id: int, role: str, content: str) -> dict:
+    # --- chat / triage transcripts --------------------------------------------
+    def add_message(
+        self, vehicle_id: int, role: str, content: str, *, channel: str = "chat"
+    ) -> dict:
         cur = self._conn.execute(
-            "INSERT INTO message (vehicle_id, role, content, created_at) VALUES (?,?,?,?)",
-            (vehicle_id, role, content, _now()),
+            "INSERT INTO message (vehicle_id, role, content, channel, created_at)"
+            " VALUES (?,?,?,?,?)",
+            (vehicle_id, role, content, channel, _now()),
         )
         self._conn.commit()
         row = self._conn.execute("SELECT * FROM message WHERE id = ?", (cur.lastrowid,)).fetchone()
         return dict(row)
 
-    def list_messages(self, vehicle_id: int, limit: int = 50) -> list[dict]:
+    def list_messages(
+        self, vehicle_id: int, limit: int = 100, *, channel: str = "chat"
+    ) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT * FROM message WHERE vehicle_id = ? ORDER BY id ASC LIMIT ?",
-            (vehicle_id, limit),
+            "SELECT * FROM message WHERE vehicle_id = ? AND channel = ? ORDER BY id ASC LIMIT ?",
+            (vehicle_id, channel, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # --- attachments (triage photos: board, scope, meter) ----------------------
+    def add_attachment(
+        self, vehicle_id: int, path: str, *, kind: str = "photo", note: str = ""
+    ) -> dict:
+        cur = self._conn.execute(
+            "INSERT INTO attachment (vehicle_id, path, kind, note, created_at) VALUES (?,?,?,?,?)",
+            (vehicle_id, path, kind, note, _now()),
+        )
+        self._conn.commit()
+        row = self._conn.execute(
+            "SELECT * FROM attachment WHERE id = ?", (cur.lastrowid,)
+        ).fetchone()
+        return dict(row)
+
+    def list_attachments(self, vehicle_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM attachment WHERE vehicle_id = ? ORDER BY id DESC", (vehicle_id,)
         ).fetchall()
         return [dict(r) for r in rows]

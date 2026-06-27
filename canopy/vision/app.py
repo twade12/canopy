@@ -6,7 +6,9 @@ local Ollama model; all data (diagrams, VINs, memories) stays on this machine.
 
 from __future__ import annotations
 
+import base64
 import json
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -99,6 +101,12 @@ class PingBody(BaseModel):
 class ResearchBody(BaseModel):
     query: str
     synthesize: bool = True
+
+
+class TriageBody(BaseModel):
+    message: str
+    image: str = ""  # optional base64 (data URL or raw) of a board/scope/meter photo
+    history: list[dict] = []
 
 
 def _parse_id(v: str) -> int:
@@ -550,6 +558,69 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             yield f"event: done\ndata: {json.dumps({})}\n\n"
 
         return StreamingResponse(gen(), media_type="text/event-stream")
+
+    # --- guided repair triage (multimodal: board/scope photos) -----------------
+    def _decode_b64_image(raw: str) -> str:
+        """Normalize a possibly-data-URL base64 image to bare base64."""
+        return raw.split(",", 1)[1] if raw.startswith("data:") else raw
+
+    @app.get("/api/vehicles/{vehicle_id}/triage/messages")
+    def triage_messages(vehicle_id: int) -> list[dict]:
+        return store.list_messages(vehicle_id, channel="triage")
+
+    @app.post("/api/vehicles/{vehicle_id}/triage/stream")
+    def triage_stream(vehicle_id: int, body: TriageBody) -> StreamingResponse:
+        context = chat_context(vehicle_id, body.message)
+        history = [
+            ChatMessage(m.get("role", "user"), m.get("content", ""))
+            for m in body.history if m.get("role") in ("user", "assistant")
+        ][-8:]
+        images: list[str] = []
+        note = body.message
+        if body.image:
+            b64 = _decode_b64_image(body.image)
+            images = [b64]
+            try:
+                path = config.uploads_dir / f"v{vehicle_id}_triage_{int(time.time() * 1000)}.png"
+                path.write_bytes(base64.b64decode(b64))
+                store.add_attachment(vehicle_id, str(path), kind="photo", note=body.message[:200])
+                note = f"{body.message} [photo attached]"
+            except (ValueError, OSError):
+                pass
+        store.add_message(vehicle_id, "user", note, channel="triage")
+
+        def gen():
+            parts: list[str] = []
+            try:
+                for chunk in extract.triage_stream(
+                    client, body.message, context=context, history=history, images=images
+                ):
+                    parts.append(chunk)
+                    yield f"event: token\ndata: {json.dumps(chunk)}\n\n"
+            except OllamaError as e:
+                yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
+                return
+            store.add_message(vehicle_id, "assistant", "".join(parts), channel="triage")
+            yield f"event: done\ndata: {json.dumps({})}\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.post("/api/vehicles/{vehicle_id}/report")
+    def repair_report(vehicle_id: int) -> dict:
+        v = store.get_vehicle(vehicle_id)
+        msgs = store.list_messages(vehicle_id, channel="triage")
+        transcript = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in msgs)
+        facts = (
+            f"Module: {' '.join(filter(None, [v['year'], v['make'], v['model'], v['label']]))}\n"
+            f"VIN: {v['vin'] or '(unknown)'}\nTags: {', '.join(store.list_tags(vehicle_id))}\n"
+            f"Pinout:\n{_pinout_text(store.list_pinouts(vehicle_id))}"
+        )
+        if not transcript.strip():
+            return {"report": "_No triage conversation yet — start a triage session first._"}
+        try:
+            return {"report": extract.repair_report(client, transcript, facts)}
+        except OllamaError as e:
+            raise HTTPException(503, str(e)) from e
 
     # --- deep research ---------------------------------------------------------
     @app.post("/api/research")
