@@ -11,7 +11,7 @@ import json
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -146,7 +146,9 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         if not config.password:
             return await call_next(request)
         path = request.url.path
-        if path in ("/login", "/api/login", "/healthz") or path.startswith("/static"):
+        # /m (mobile capture) + /api/pair/* are gated by a pairing token, not the password.
+        if (path in ("/login", "/api/login", "/healthz", "/m")
+                or path.startswith("/static") or path.startswith("/api/pair/")):
             return await call_next(request)
         if auth.valid_token(secret, request.cookies.get(auth.COOKIE)):
             return await call_next(request)
@@ -627,8 +629,12 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             small_b64 = base64.b64encode(dg._downscale_png(raw)).decode()  # speed up inference
         except (ValueError, OSError):
             pass
+        v = store.get_vehicle(vehicle_id)
+        ident = " ".join(filter(None, [v["year"], v["make"], v["model"], v["label"]]))
+        pins = _pinout_text(store.list_pinouts(vehicle_id))
+        ctx = f"Module: {ident or '(unidentified)'}\nPinout:\n{pins}"
         try:
-            result = extract.analyze_pcb(client, [small_b64])
+            result = extract.analyze_pcb(client, [small_b64], ctx)
         except OllamaError as e:
             raise HTTPException(503, str(e)) from e
         if result["components"]:
@@ -654,6 +660,67 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             return {"report": extract.repair_report(client, transcript, facts)}
         except OllamaError as e:
             raise HTTPException(503, str(e)) from e
+
+    # --- attachments (board/scope/phone photos) --------------------------------
+    @app.get("/api/vehicles/{vehicle_id}/attachments")
+    def list_attachments(vehicle_id: int) -> list[dict]:
+        return store.list_attachments(vehicle_id)
+
+    @app.get("/api/attachment/{attachment_id}/image")
+    def attachment_image(attachment_id: int) -> Response:
+        row = next((a for v in store.list_vehicles()
+                    for a in store.list_attachments(v["id"]) if a["id"] == attachment_id), None)
+        if not row or not Path(row["path"]).exists():
+            raise HTTPException(404, "not found")
+        return Response(content=Path(row["path"]).read_bytes(), media_type="image/png")
+
+    # --- phone pairing (snap board photos straight into a project) -------------
+    @app.get("/api/vehicles/{vehicle_id}/pair")
+    def pair(vehicle_id: int, request: Request) -> dict:
+        token = auth.make_pair_token(secret, vehicle_id)
+        base = str(request.base_url).rstrip("/")
+        return {"token": token, "url": f"{base}/m?token={token}"}
+
+    @app.get("/api/vehicles/{vehicle_id}/pair/qr")
+    def pair_qr(vehicle_id: int, request: Request) -> Response:
+        import io
+
+        import qrcode
+        token = auth.make_pair_token(secret, vehicle_id)
+        url = f"{str(request.base_url).rstrip('/')}/m?token={token}"
+        buf = io.BytesIO()
+        qrcode.make(url).save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    @app.get("/m")
+    def mobile_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "mobile.html")
+
+    @app.get("/api/pair/info")
+    def pair_info(token: str) -> dict:
+        vid = auth.valid_pair_token(secret, token)
+        if vid is None:
+            raise HTTPException(401, "invalid or expired pairing link")
+        v = store.get_vehicle(vid)
+        return {"vehicle_id": vid, "label": v["label"] or " ".join(
+            filter(None, [v["year"], v["make"], v["model"]])) or f"project {vid}"}
+
+    @app.post("/api/pair/upload")
+    async def pair_upload(token: str = Form(...), kind: str = Form("phone"),
+                          file: UploadFile = None) -> dict:
+        vid = auth.valid_pair_token(secret, token)
+        if vid is None:
+            raise HTTPException(401, "invalid or expired pairing link")
+        if file is None:
+            raise HTTPException(400, "no file")
+        data = await file.read()
+        path = config.uploads_dir / f"v{vid}_phone_{int(time.time() * 1000)}.png"
+        try:
+            path.write_bytes(dg._downscale_png(data))
+        except Exception:
+            path.write_bytes(data)
+        rec = store.add_attachment(vid, str(path), kind=kind, note=file.filename or "phone photo")
+        return {"ok": True, "id": rec["id"]}
 
     # --- deep research ---------------------------------------------------------
     @app.post("/api/research")

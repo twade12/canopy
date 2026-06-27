@@ -24,3 +24,12 @@ def test_password_check() -> None:
     assert auth.check_password("hunter2", "hunter2")
     assert not auth.check_password("hunter2", "nope")
     assert not auth.check_password("", "")                  # empty disables (no match)
+
+
+def test_pair_token() -> None:
+    secret = b"p" * 32
+    assert auth.valid_pair_token(secret, auth.make_pair_token(secret, 7)) == 7
+    assert auth.valid_pair_token(secret, auth.make_pair_token(secret, 7, ttl=-1)) is None
+    assert auth.valid_pair_token(b"q" * 32, auth.make_pair_token(secret, 7)) is None  # wrong key
+    assert auth.valid_pair_token(secret, "1.999.deadbeef") is None                    # bad sig
+    assert auth.valid_pair_token(secret, None) is None

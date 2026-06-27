@@ -239,5 +239,28 @@ def vision_serve(
     uvicorn.run(create_app(config), host=host, port=port)
 
 
+@vision_app.command("migrate")
+def vision_migrate(
+    sqlite: Path | None = typer.Option(None, help="Source SQLite DB (default: configured one)."),
+    to: str | None = typer.Option(None, help="Target postgresql://… (else CANOPY_DATABASE_URL)."),
+) -> None:
+    """Migrate the local SQLite knowledge base into Postgres + pgvector."""
+    import os
+
+    from canopy.vision.config import VisionConfig
+    from canopy.vision.migrate import migrate_sqlite_to_pg
+
+    cfg = VisionConfig.from_env()
+    src = sqlite or cfg.db_path
+    dst = to or os.environ.get("CANOPY_DATABASE_URL")
+    if not dst:
+        raise typer.BadParameter("set --to or CANOPY_DATABASE_URL to the target Postgres URL")
+    if not Path(src).exists():
+        raise typer.BadParameter(f"source SQLite not found: {src}")
+    typer.echo(f"Migrating {src} → {dst}")
+    counts = migrate_sqlite_to_pg(src, dst, log=typer.echo)
+    typer.echo("done: " + ", ".join(f"{v} {k}" for k, v in counts.items()))
+
+
 if __name__ == "__main__":
     app()

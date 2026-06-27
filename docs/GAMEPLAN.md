@@ -89,11 +89,12 @@ multimodal, AI-guided session.
   wire to the right pins. (Seed this as built-in reference knowledge + research.)
 
 ### Phase 3 — Phone capture & real-time field input
-- **Pair a phone to a session.** From the desktop session, show a QR code → opens a minimal
-  mobile capture page bound to that session via a short-lived signed token (same HMAC scheme as
-  [auth.py](../canopy/vision/auth.py)). The tech photographs the board/scope as they work and
-  images stream into the session in real time, immediately available to the AI.
-- **Offline-tolerant uploads** (retry/queue) for shop-floor Wi-Fi.
+- **Pair a phone to a project.** ✅ *Done:* the **Pair phone** button shows a QR (built from
+  the LAN/VPN address you used) that opens a token-gated mobile capture page
+  ([mobile.html](../canopy/vision/static/mobile.html)); photos the tech takes appear on the
+  desktop in real time and can be pushed into **PCB analysis** or **Triage** with one tap.
+  Token scheme in [auth.py](../canopy/vision/auth.py); endpoints `/api/pair/*`.
+- *Remaining:* offline-tolerant upload queue for flaky shop Wi-Fi; live scope/video stream.
 
 ### Phase 4 — Reports & wiki generation
 - **Report builder.** Render a `RepairSession` to a branded **PDF/Markdown** report (symptom,

@@ -20,6 +20,7 @@ const ICON = {
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
   triage: '<path d="M21 4a4 4 0 01-5.6 5.6L7 18l-2-2 8.4-8.4A4 4 0 0119 2l-3 3 1.5 1.5L21 4z"/>',
   chip: '<rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>',
+  phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
 };
 const svg = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON[n] || ''}</svg>`;
 const VIEWS = [
@@ -438,7 +439,8 @@ const ui = {
   viewTriage(c) {
     c.innerHTML = `<div class="chat"><div class="chips">
         <span class="chip" onclick="ui.fillTriage('The symptom is: ')">Describe symptom</span>
-        <span class="chip" onclick="ui.attachTriagePhoto()">${svg('upload')} Attach board / scope photo</span>
+        <span class="chip" onclick="ui.attachTriagePhoto()">${svg('upload')} Attach photo</span>
+        <span class="chip" onclick="ui.phoneModal()">${svg('phone')} Pair phone</span>
         <span class="chip" onclick="ui.askTriage('Analyze the attached PCB photo: identify the components and what to check on each, and which tool to use.')">Analyze PCB</span>
         <span class="chip" onclick="ui.askTriage('Which serial/diagnostic protocols does this module use, and which OBD-II pins are relevant?')">Protocols / OBD-II</span>
         <span class="chip" onclick="ui.triageReport()">Generate report</span></div>
@@ -486,7 +488,8 @@ const ui = {
   // ---------- PCB photo analysis (boxed components) ----------
   viewPcb(c) {
     if (!state.pcbComponents) {
-      c.innerHTML = `<div id="pcbDz" class="dropzone">${svg('chip')}<div style="margin-top:8px"><strong>Drop a PCB photo</strong> (the ECU/module board), or click.</div><div class="muted" style="margin-top:4px">CANOPY boxes the components it recognizes and tells you what to check on each.</div></div>`;
+      c.innerHTML = `<div id="pcbDz" class="dropzone">${svg('chip')}<div style="margin-top:8px"><strong>Drop a PCB photo</strong> (the ECU/module board), or click.</div><div class="muted" style="margin-top:4px">CANOPY boxes the components it recognizes and tells you what to check on each.</div></div>
+        <div class="row" style="margin-top:10px;justify-content:center"><button onclick="ui.phoneModal()">${svg('phone')} Pair phone to snap a photo</button></div>`;
       const dz = c.querySelector('#pcbDz'); if (dz) { dz.onclick = () => this.pcbPick();
         ['dragover', 'dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.toggle('drag', ev === 'dragover'); if (ev === 'drop' && e.dataTransfer.files[0]) this.pcbUpload(e.dataTransfer.files[0]); })); }
       return;
@@ -495,7 +498,7 @@ const ui = {
     const boxes = comps.map((p, i) => { const [x0, y0, x1, y1] = p.box;
       return `<div class="pcb-box ${i === state.pcbSel ? 'sel' : ''}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})"><span class="lbl">${esc(p.label)}</span></div>`; }).join('');
     const sel = state.pcbSel != null ? comps[state.pcbSel] : null;
-    c.innerHTML = `<div class="row" style="margin-bottom:8px"><button onclick="ui.pcbPick()">${svg('upload')} New photo</button><button onclick="ui.pcbToTriage()">${svg('triage')} Send board to Triage</button><span class="muted" style="align-self:center">${comps.length} components — click a box</span></div>
+    c.innerHTML = `<div class="row" style="margin-bottom:8px"><button onclick="ui.pcbPick()">${svg('upload')} New photo</button><button onclick="ui.phoneModal()">${svg('phone')} Pair phone</button><button onclick="ui.pcbToTriage()">${svg('triage')} Send board to Triage</button><span class="muted" style="align-self:center">${comps.length} components — click a box</span></div>
       <div class="pcb-wrap"><img src="${state.pcbImage}" alt="PCB"><div style="position:absolute;inset:0">${boxes}</div></div>
       ${sel ? `<div class="bench-section" style="margin-top:10px"><div class="pi-top" style="display:flex;align-items:center;gap:8px"><b style="font-size:14px">${esc(sel.label)}</b>${sel.part ? `<span class="tagchip">${esc(sel.part)}</span>` : ''}<span class="pi-conf" style="margin-left:auto;color:var(--muted);font-size:11px">conf ${Math.round(sel.confidence * 100)}%</span></div>
         <div style="margin:6px 0;font-size:13px">${esc(sel.function)}</div><div class="warn" style="color:var(--cyan)">Check: ${esc(sel.check)}</div>
@@ -514,6 +517,33 @@ const ui = {
   pcbToTriage(i) { state.triageImage = state.pcbImage; ensureView('triage'); const sel = i != null ? state.pcbComponents[i] : null;
     const txt = sel ? `About the ${sel.label} on this board: ` : 'Here is the ECU board photo. The symptom is: ';
     const inp = el('tIn'); if (inp) { inp.value = txt; inp.focus(); } const a = el('tAttach'); if (a) a.textContent = 'board photo attached — sends with your next message'; },
+
+  // ---------- phone pairing ----------
+  phoneModal() {
+    if (!state.current) return; const id = state.current.id;
+    const m = document.createElement('div'); m.className = 'modal'; m.style.width = 'min(520px,94vw)';
+    m.innerHTML = `<div class="m-head">${svg('phone')} Pair a phone</div><div class="m-sub">Scan with your phone's camera (same Wi-Fi / VPN). Photos you take appear here and can go straight into PCB analysis or Triage.</div>
+      <div class="m-body" style="text-align:center"><img src="/api/vehicles/${id}/pair/qr?t=${Date.now()}" style="width:210px;height:210px;border-radius:10px;border:1px solid var(--border)">
+        <div class="muted" id="phoneUrl" style="font-size:11px;margin-top:6px;word-break:break-all"></div>
+        <div id="phoneGal" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px"></div></div>
+      <div class="m-foot"><button class="primary" onclick="closeModal()">Done</button></div>`;
+    showModal(m);
+    api.get(`/api/vehicles/${id}/pair`).then(d => { const u = el('phoneUrl'); if (u) u.textContent = d.url; }).catch(() => {});
+    state.phoneSeen = new Set();
+    const t = setInterval(async () => { const gal = el('phoneGal'); if (!gal) { clearInterval(t); return; }
+      try { const list = await api.get(`/api/vehicles/${id}/attachments`);
+        for (const a of list.slice().reverse()) { if (a.kind !== 'phone' || state.phoneSeen.has(a.id)) continue; state.phoneSeen.add(a.id);
+          gal.insertAdjacentHTML('afterbegin', `<div><img src="/api/attachment/${a.id}/image" style="width:100%;border-radius:8px;border:1px solid var(--border)"><div class="row" style="gap:4px;margin-top:3px;justify-content:center"><button class="ghost" style="font-size:10px;padding:3px 7px" onclick="ui.phoneUse(${a.id},'pcb')">PCB</button><button class="ghost" style="font-size:10px;padding:3px 7px" onclick="ui.phoneUse(${a.id},'triage')">Triage</button></div></div>`); }
+      } catch {} }, 2000);
+  },
+  async fetchDataUrl(url) { const r = await fetch(url); const b = await r.blob(); return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }); },
+  async phoneUse(attId, target) {
+    const dataUrl = await this.fetchDataUrl(`/api/attachment/${attId}/image`); closeModal();
+    if (target === 'pcb') { state.pcbImage = dataUrl; state.pcbSel = null; ensureView('pcb'); aiToast.show('Analyzing PCB…');
+      try { const res = await api.send(`/api/vehicles/${state.current.id}/pcb`, 'POST', { image: dataUrl }); state.pcbComponents = res.components || []; rerenderView('pcb'); aiToast.done(`${state.pcbComponents.length} components`); }
+      catch (e) { aiToast.done('Error'); alert(e.message); }
+    } else { state.triageImage = dataUrl; ensureView('triage'); const i = el('tIn'); if (i) { i.value = 'Here is a photo of the board: '; i.focus(); } const a = el('tAttach'); if (a) a.textContent = 'phone photo attached — sends with your next message'; }
+  },
 
   // ---------- deep research ----------
   viewResearch(c) {

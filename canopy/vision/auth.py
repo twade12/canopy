@@ -56,3 +56,28 @@ def valid_token(secret: bytes, token: str | None) -> bool:
 
 def check_password(secret_password: str, attempt: str) -> bool:
     return bool(secret_password) and hmac.compare_digest(secret_password, attempt or "")
+
+
+# --- phone-pairing tokens (scope a phone to one project for a short window) ---
+PAIR_TTL = 60 * 60 * 4  # 4 hours
+
+
+def make_pair_token(secret: bytes, vehicle_id: int, *, ttl: int = PAIR_TTL) -> str:
+    base = f"{vehicle_id}.{int(time.time()) + ttl}"
+    sig = hmac.new(secret, base.encode(), hashlib.sha256).hexdigest()
+    return f"{base}.{sig}"
+
+
+def valid_pair_token(secret: bytes, token: str | None) -> int | None:
+    """Return the vehicle_id if the pairing token is valid and unexpired, else None."""
+    parts = (token or "").split(".")
+    if len(parts) != 3:
+        return None
+    vid, expiry, sig = parts
+    expected = hmac.new(secret, f"{vid}.{expiry}".encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None
+    try:
+        return int(vid) if int(expiry) > time.time() else None
+    except ValueError:
+        return None

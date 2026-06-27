@@ -25,11 +25,14 @@ from canopy.vision.prompts import (
 )
 
 
-def analyze_pcb(client: OllamaClient, images: list[str]) -> dict:
+def analyze_pcb(client: OllamaClient, images: list[str], context: str = "") -> dict:
     """Identify PCB components with bounding boxes (fractions 0..1) + function/check/tool."""
+    user = "Analyze this PCB photo and box the components."
+    if context:
+        user += f"\n\nThis module's identity and pinout (use to ground your analysis):\n{context}"
     messages = [
         ChatMessage("system", PCB_SYSTEM),
-        ChatMessage("user", "Analyze this PCB photo and box the components.", images=images),
+        ChatMessage("user", user, images=images),
     ]
     data = parse_json_object(client.chat(messages, temperature=0.0))
     comps = []

@@ -36,6 +36,7 @@ vision = [
     "pymupdf>=1.24",
     "pillow>=10.0",
     "pgvector>=0.2.5",
+    "qrcode>=7.4",
 ]
 
 [project.scripts]

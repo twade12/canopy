@@ -69,6 +69,47 @@ sudo -u canopy .venv/bin/pip install -e ".[vision]"
 sudo systemctl restart canopy
 ```
 
+## Access from your phone + laptop on the LAN / VPN
+
+To reach CANOPY from other devices on the same network (so you can pair a phone and snap
+board photos), bind the app to all interfaces instead of localhost. In the installed
+`canopy.service`, change the host in `ExecStart`:
+
+```ini
+ExecStart=/home/<you>/Documents/canopy/.venv/bin/uvicorn --factory canopy.vision.app:create_app \
+          --host 0.0.0.0 --port 8088 --timeout-keep-alive 75
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart canopy
+hostname -I            # find this machine's LAN/VPN IP, e.g. 192.168.1.50
+```
+
+Then browse to `http://192.168.1.50:8088` from any device on the network (or VPN) and log
+in with `CANOPY_PASSWORD`. The **Pair phone** button (in the Triage and PCB tabs) shows a QR
+that opens a phone capture page bound to that project — photos you take appear on your laptop
+in real time. The pairing link is built from the address you used, so it must be the LAN/VPN
+IP (not `127.0.0.1`).
+
+> Binding `0.0.0.0` exposes the app to your LAN — the password is the only gate, so use a
+> strong one. For internet exposure use the nginx + TLS setup above instead (keep the app on
+> `127.0.0.1`).
+
+## Migrate existing SQLite data into Postgres
+
+Switching to Postgres starts empty. To carry your existing local projects over:
+
+```bash
+# with CANOPY_DATABASE_URL set (or pass --to):
+.venv/bin/canopy vision migrate
+# or explicitly:
+.venv/bin/canopy vision migrate --sqlite ~/.canopy/vision/canopy_vision.db \
+    --to postgresql://canopy:canopy@127.0.0.1:5440/canopy
+```
+
+It copies every project, diagram, pinout, tag, memory (with embeddings), chat/triage
+transcript, and attachment. Run it once into a fresh DB.
+
 ## Shared knowledge base (Postgres + pgvector)
 
 By default the app uses a local SQLite file (fine for a single box). For a team — shared

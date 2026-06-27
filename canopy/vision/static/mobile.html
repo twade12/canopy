@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>CANOPY · Capture</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body { padding: 16px; display: block; }
+    .mhead { font-weight: 800; letter-spacing: 1px; font-size: 20px; }
+    .msub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+    .bigbtn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+      padding: 18px; font-size: 17px; border-radius: 14px; margin-bottom: 12px; }
+    .gallery { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 14px; }
+    .gallery img { width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+    .sent { color: var(--accent); font-size: 13px; min-height: 18px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="mhead">CANOPY</div>
+  <div class="msub" id="proj">connecting…</div>
+  <input id="cam" type="file" accept="image/*" capture="environment" class="hidden" multiple>
+  <button class="primary bigbtn" onclick="document.getElementById('cam').click()">Take / choose photo</button>
+  <div class="sent" id="sent"></div>
+  <div class="gallery" id="gal"></div>
+  <script>
+    const token = new URLSearchParams(location.search).get('token');
+    async function init() {
+      try { const r = await fetch('/api/pair/info?token=' + encodeURIComponent(token));
+        if (!r.ok) throw 0; const d = await r.json();
+        document.getElementById('proj').textContent = 'Sending photos to: ' + d.label;
+      } catch { document.getElementById('proj').innerHTML = '<span style="color:#d4493f">Pairing link invalid or expired. Re-scan the QR on your computer.</span>'; }
+    }
+    document.getElementById('cam').onchange = async e => {
+      for (const f of e.target.files) {
+        const fd = new FormData(); fd.append('token', token); fd.append('file', f);
+        document.getElementById('sent').textContent = 'uploading…';
+        try { const r = await fetch('/api/pair/upload', { method: 'POST', body: fd });
+          if (!r.ok) throw 0;
+          const url = URL.createObjectURL(f);
+          document.getElementById('gal').insertAdjacentHTML('afterbegin', '<img src="' + url + '">');
+          document.getElementById('sent').textContent = 'sent to CANOPY';
+        } catch { document.getElementById('sent').innerHTML = '<span style="color:#d4493f">upload failed</span>'; }
+      }
+      e.target.value = '';
+    };
+    init();
+  </script>
+</body>
+</html>
