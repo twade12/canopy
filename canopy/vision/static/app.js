@@ -495,15 +495,35 @@ const ui = {
       return;
     }
     const comps = state.pcbComponents;
-    const boxes = comps.map((p, i) => { const [x0, y0, x1, y1] = p.box;
-      return `<div class="pcb-box ${i === state.pcbSel ? 'sel' : ''}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})"><span class="lbl">${esc(p.label)}</span></div>`; }).join('');
     const sel = state.pcbSel != null ? comps[state.pcbSel] : null;
-    c.innerHTML = `<div class="row" style="margin-bottom:8px"><button onclick="ui.pcbPick()">${svg('upload')} New photo</button><button onclick="ui.phoneModal()">${svg('phone')} Pair phone</button><button onclick="ui.pcbToTriage()">${svg('triage')} Send board to Triage</button><span class="muted" style="align-self:center">${comps.length} components — click a box</span></div>
-      <div class="pcb-wrap"><img src="${state.pcbImage}" alt="PCB"><div style="position:absolute;inset:0">${boxes}</div></div>
-      ${sel ? `<div class="bench-section" style="margin-top:10px"><div class="pi-top" style="display:flex;align-items:center;gap:8px"><b style="font-size:14px">${esc(sel.label)}</b>${sel.part ? `<span class="tagchip">${esc(sel.part)}</span>` : ''}<span class="pi-conf" style="margin-left:auto;color:var(--muted);font-size:11px">conf ${Math.round(sel.confidence * 100)}%</span></div>
-        <div style="margin:6px 0;font-size:13px">${esc(sel.function)}</div><div class="warn" style="color:var(--cyan)">Check: ${esc(sel.check)}</div>
-        <button style="margin-top:8px" onclick="ui.pcbToTriage(${state.pcbSel})">Ask about this in Triage</button></div>` : ''}
-      <div class="pcb-list">${comps.map((p, i) => `<div class="pcb-item ${i === state.pcbSel ? 'sel' : ''}" onclick="ui.selectPcb(${i})"><div class="pi-top"><span class="pi-label">${esc(p.label)}</span><span class="pi-conf">${Math.round(p.confidence * 100)}%</span></div><div class="pi-detail">${esc(p.check)}</div></div>`).join('')}</div>`;
+    const boxes = comps.map((p, i) => { const [x0, y0, x1, y1] = p.box; const on = i === state.pcbSel;
+      return `<div class="pcb-box ${on ? 'sel' : 'dim'}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})">${on ? `<span class="lbl">${esc(p.label)}</span>` : ''}</div>`; }).join('');
+    c.innerHTML = `<div class="pcb-col">
+      <div class="row" style="margin-bottom:8px"><button onclick="ui.pcbPick()">${svg('upload')} New photo</button><button onclick="ui.phoneModal()">${svg('phone')} Pair phone</button><button onclick="ui.exportPcb()">${svg('chip')} Save annotated PNG</button></div>
+      <div class="pcb-layout">
+        <div class="pcb-stage"><div class="pcb-wrap"><img src="${state.pcbImage}" alt="PCB"><div style="position:absolute;inset:0">${boxes}</div></div></div>
+        <div class="pcb-side">
+          <div class="muted" style="font-size:11px;margin-bottom:6px">${comps.length} components — click one to highlight it on the board</div>
+          <div class="pcb-list">${comps.map((p, i) => `<div class="pcb-item ${i === state.pcbSel ? 'sel' : ''}" onclick="ui.selectPcb(${i})"><div class="pi-top"><span class="pi-label">${esc(p.label)}</span><span class="pi-conf">${Math.round(p.confidence * 100)}%</span></div><div class="pi-detail">${esc(p.check)}</div></div>`).join('')}</div>
+          ${sel ? `<div class="pcb-detail"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:14px">${esc(sel.label)}</b>${sel.part ? `<span class="tagchip">${esc(sel.part)}</span>` : ''}<span style="margin-left:auto;color:var(--muted);font-size:11px">conf ${Math.round(sel.confidence * 100)}%</span></div>
+            <div style="margin:6px 0;font-size:13px">${esc(sel.function)}</div><div class="warn" style="color:var(--cyan)">Check: ${esc(sel.check)}</div>
+            <button class="primary" style="margin-top:8px;width:100%" onclick="ui.pcbToTriage(${state.pcbSel})">${svg('triage')} Send to Triage</button></div>` : '<div class="pcb-detail muted" style="font-size:12px">Select a component to see its function, what to check, and send it to Triage.</div>'}
+        </div>
+      </div></div>`;
+  },
+  async exportPcb() {
+    if (!state.pcbImage) return; aiToast.show('Rendering annotated image…');
+    try {
+      const img = new Image(); img.src = state.pcbImage; await img.decode();
+      const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      const ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0);
+      const lw = Math.max(2, cv.width / 450); const fs = Math.max(13, cv.width / 75); ctx.font = `bold ${fs}px sans-serif`; ctx.textBaseline = 'bottom';
+      (state.pcbComponents || []).forEach((p, i) => { const [x0, y0, x1, y1] = p.box; const x = x0 * cv.width, y = y0 * cv.height, w = (x1 - x0) * cv.width, h = (y1 - y0) * cv.height;
+        const on = i === state.pcbSel; ctx.lineWidth = on ? lw * 1.6 : lw; ctx.strokeStyle = on ? '#0f9d6b' : '#0e8aa6';
+        ctx.strokeRect(x, y, w, h); const tw = ctx.measureText(p.label).width; ctx.fillStyle = on ? '#0f9d6b' : '#0e8aa6'; ctx.fillRect(x, y - fs - 4, tw + 10, fs + 4); ctx.fillStyle = '#fff'; ctx.fillText(p.label, x + 5, y - 2); });
+      const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = `${(state.current.label || 'pcb').replace(/[^\w.-]/g, '_')}_annotated.png`; a.click();
+      aiToast.done('Saved annotated PNG');
+    } catch (e) { aiToast.done('Error'); alert(e.message); }
   },
   pcbPick() { if (!state.pcbFileInput) { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.onchange = e => { if (e.target.files[0]) this.pcbUpload(e.target.files[0]); }; state.pcbFileInput = inp; } state.pcbFileInput.value = ''; state.pcbFileInput.click(); },
   async pcbUpload(file) {
