@@ -1,0 +1,27 @@
+# systemd unit for CANOPY's own Postgres (pgvector) — the shared knowledge base.
+# Runs an isolated container so it won't clash with any other Postgres on the host.
+# Install: sudo cp deploy/canopy-db.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now canopy-db
+#
+# Host port: 5440 here (5432 is often already taken). It must match the port in
+# canopy.service's CANOPY_DATABASE_URL. Data persists in the canopy-pgdata volume.
+
+[Unit]
+Description=CANOPY Postgres + pgvector (shared knowledge base)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/docker rm -f canopy-db
+ExecStart=/usr/bin/docker run --rm --name canopy-db \
+    -e POSTGRES_USER=canopy -e POSTGRES_PASSWORD=canopy -e POSTGRES_DB=canopy \
+    -p 127.0.0.1:5440:5432 -v canopy-pgdata:/var/lib/postgresql/data \
+    pgvector/pgvector:pg16
+ExecStop=/usr/bin/docker stop canopy-db
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

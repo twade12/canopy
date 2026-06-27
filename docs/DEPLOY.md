@@ -22,16 +22,24 @@ sudo -u canopy python3 -m venv .venv
 sudo -u canopy .venv/bin/pip install -e ".[vision]"
 ```
 
-## 2. systemd service
+## 2. systemd services (app + database)
+
+Two units: `canopy-db` (an isolated Postgres+pgvector container) and `canopy` (the app on
+127.0.0.1:8088, which `Wants`/`After` the DB). The DB unit publishes **port 5440** (5432 is
+often already taken) — keep it in sync with `CANOPY_DATABASE_URL` in `canopy.service`.
 
 ```bash
-sudo cp deploy/canopy.service /etc/systemd/system/canopy.service
-sudoedit /etc/systemd/system/canopy.service     # set CANOPY_PASSWORD and model
+sudo cp deploy/canopy-db.service deploy/canopy.service /etc/systemd/system/
+sudoedit /etc/systemd/system/canopy.service     # set CANOPY_PASSWORD, model, paths, keys
 sudo systemctl daemon-reload
-sudo systemctl enable --now canopy
+sudo systemctl enable --now canopy-db canopy    # DB starts first, then the app
 systemctl status canopy
 curl -s localhost:8088/healthz                  # -> {"ok":true}
 ```
+
+> Prefer SQLite (single box, no DB)? Just omit `canopy-db` and unset `CANOPY_DATABASE_URL`
+> in `canopy.service`. Switching to Postgres starts a **fresh** knowledge base (existing
+> SQLite projects stay in the SQLite file).
 
 Set **`CANOPY_PASSWORD`** to a strong value — it's the only thing protecting a public
 deployment. The signing secret is generated automatically at

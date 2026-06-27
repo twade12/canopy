@@ -1,39 +1,57 @@
-# systemd unit for CANOPY Vision (the web app).
-# Install: sudo cp deploy/canopy.service /etc/systemd/system/canopy.service
-#          sudo systemctl daemon-reload && sudo systemctl enable --now canopy
-# Edit the Environment= lines (password, model, data dir) for your install.
+# systemd unit for CANOPY Vision (the web app) on 127.0.0.1:8088.
+#
+# This is a TEMPLATE — copy it to /etc/systemd/system/canopy.service and fill in the
+# secrets there (do NOT commit real passwords/keys back into the repo). It pairs with
+# canopy-db.service for the Postgres/pgvector knowledge base.
+#
+#   sudo cp deploy/canopy-db.service deploy/canopy.service /etc/systemd/system/
+#   sudoedit /etc/systemd/system/canopy.service     # set the Environment= secrets + paths
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now canopy-db canopy
+#   systemctl status canopy ; curl -s localhost:8088/healthz   # -> {"ok":true}
+#
+# Two install layouts:
+#   (A) Production: app at /opt/canopy, dedicated 'canopy' user (paths below, plus the
+#       hardening lines at the bottom).
+#   (B) Run from an existing checkout (e.g. /home/<you>/Documents/canopy as your own user):
+#       set WorkingDirectory + ExecStart to that path and User=<you>, point
+#       CANOPY_VISION_DATA at e.g. /home/<you>/.canopy/vision, and DROP the hardening lines.
 
 [Unit]
 Description=CANOPY Vision (wiring-diagram + diagnostics web app)
-After=network-online.target
-Wants=network-online.target
+After=network-online.target canopy-db.service ollama.service
+Wants=network-online.target canopy-db.service
 
 [Service]
 Type=simple
 User=canopy
 Group=canopy
 WorkingDirectory=/opt/canopy
-# Persisted data: SQLite DB, uploaded diagrams, signing secret
+
+# Persisted data: uploaded diagrams + auth signing secret (the DB itself is Postgres below)
 Environment=CANOPY_VISION_DATA=/var/lib/canopy/vision
-# REQUIRED for a public deployment — gates the app behind a password
-Environment=CANOPY_PASSWORD=change-me-please
+# REQUIRED for a public deployment — gates the app behind a password.
+# Quote values containing # or other specials:  Environment="CANOPY_PASSWORD=pa#ss"
+Environment="CANOPY_PASSWORD=change-me-please"
 # Local Ollama (must be reachable from this host)
 Environment=CANOPY_OLLAMA_URL=http://127.0.0.1:11434
 Environment=CANOPY_OLLAMA_MODEL=gemma4:26b
 Environment=CANOPY_OLLAMA_EMBED_MODEL=nomic-embed-text
+# Shared knowledge base — must match canopy-db.service's published port (5440 there).
+Environment=CANOPY_DATABASE_URL=postgresql://canopy:canopy@127.0.0.1:5440/canopy
 # Deep research (optional): set ONE search-provider key to enable the Research tab.
-#   Tavily  -> https://app.tavily.com  (free tier; key looks like tvly-...)
-#   Brave   -> https://brave.com/search/api/
-Environment=CANOPY_TAVILY_KEY=
+#   Tavily -> https://app.tavily.com   Brave -> https://brave.com/search/api/
+#Environment=CANOPY_TAVILY_KEY=
 #Environment=CANOPY_BRAVE_KEY=
-# Optional: Postgres + pgvector instead of local SQLite (org-wide shared knowledge)
-#Environment=CANOPY_DATABASE_URL=postgresql://canopy:canopy@localhost:5432/canopy
-# Bind to localhost only; nginx terminates TLS and proxies in.
+
+# Wait for Postgres to accept connections before starting the app.
+ExecStartPre=/bin/bash -c 'for i in {1..30}; do (echo > /dev/tcp/127.0.0.1/5440) >/dev/null 2>&1 && exit 0; sleep 1; done; exit 0'
 ExecStart=/opt/canopy/.venv/bin/uvicorn --factory canopy.vision.app:create_app \
           --host 127.0.0.1 --port 8088 --timeout-keep-alive 75
 Restart=on-failure
 RestartSec=3
-# Hardening
+
+# --- Production hardening (layout A only; REMOVE for a home-dir checkout, layout B) ---
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
