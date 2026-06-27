@@ -164,6 +164,10 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         resp.delete_cookie(auth.COOKIE)
         return resp
 
+    @app.get("/api/auth/status")
+    def auth_status() -> dict:
+        return {"auth": bool(config.password)}
+
     store = Store(config.db_path)
     client = OllamaClient(
         config.ollama_url, config.model, timeout=config.request_timeout

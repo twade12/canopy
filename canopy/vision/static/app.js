@@ -11,6 +11,7 @@ const ICON = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/>',
   moon: '<path d="M21 12.8A8 8 0 1111 3a6 6 0 0010 9.8z"/>', reset: '<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 8a8 8 0 00-14-3M4 16a8 8 0 0014 3"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>', prev: '<path d="M15 6l-6 6 6 6"/>', next: '<path d="M9 6l6 6-6 6"/>',
+  logout: '<path d="M14 7V5a2 2 0 00-2-2H6a2 2 0 00-2 2v14a2 2 0 002 2h6a2 2 0 002-2v-2M10 12h11M18 9l3 3-3 3"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', warn: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
   edit: '<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
@@ -188,7 +189,8 @@ const ui = {
     document.documentElement.dataset.theme = state.theme;
     el('sidebarToggle').innerHTML = svg('menu'); el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon');
     el('resetBtn').innerHTML = svg('reset'); el('apiBtn').innerHTML = svg('api'); el('newRecBtn').innerHTML = svg('plus'); el('searchIcon').innerHTML = svg('search');
-    el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search');
+    el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search'); el('logoutBtn').innerHTML = svg('logout');
+    api.get('/api/auth/status').then(s => { if (s.auth) el('logoutBtn').classList.remove('hidden'); }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.streamCtrl) this.cancelStream(); });
     state.dock = loadDock();
@@ -199,6 +201,7 @@ const ui = {
 
   toggleSidebar() { state.sidebar = !state.sidebar; el('sidebar').classList.toggle('collapsed', !state.sidebar); },
   toggleTheme() { state.theme = state.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = state.theme; localStorage.setItem('canopy-theme', state.theme); el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon'); },
+  async logout() { try { await api.send('/api/logout', 'POST'); } catch {} location.href = '/login'; },
   resetLayout() { state.dock = defaultDock(); saveDock(); renderDock(); },
   openView(v) { ensureView(v); },
   handleDrop(group, v, side) { const from = groupOfView(state.dock, v);

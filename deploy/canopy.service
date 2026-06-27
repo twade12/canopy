@@ -21,6 +21,13 @@ Environment=CANOPY_PASSWORD=change-me-please
 Environment=CANOPY_OLLAMA_URL=http://127.0.0.1:11434
 Environment=CANOPY_OLLAMA_MODEL=gemma4:26b
 Environment=CANOPY_OLLAMA_EMBED_MODEL=nomic-embed-text
+# Deep research (optional): set ONE search-provider key to enable the Research tab.
+#   Tavily  -> https://app.tavily.com  (free tier; key looks like tvly-...)
+#   Brave   -> https://brave.com/search/api/
+Environment=CANOPY_TAVILY_KEY=
+#Environment=CANOPY_BRAVE_KEY=
+# Optional: Postgres + pgvector instead of local SQLite (org-wide shared knowledge)
+#Environment=CANOPY_DATABASE_URL=postgresql://canopy:canopy@localhost:5432/canopy
 # Bind to localhost only; nginx terminates TLS and proxies in.
 ExecStart=/opt/canopy/.venv/bin/uvicorn --factory canopy.vision.app:create_app \
           --host 127.0.0.1 --port 8088 --timeout-keep-alive 75

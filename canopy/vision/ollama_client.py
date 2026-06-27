@@ -34,10 +34,13 @@ class ChatMessage:
 class OllamaClient:
     """Thin wrapper around a local Ollama server."""
 
-    def __init__(self, base_url: str, model: str, *, timeout: float = 600.0):
+    def __init__(self, base_url: str, model: str, *, timeout: float = 600.0,
+                 keep_alive: str = "30m"):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        # Keep the model resident in Ollama between requests to avoid cold-start stalls.
+        self.keep_alive = keep_alive
 
     def _post(self, path: str, payload: dict) -> dict:
         url = f"{self.base_url}{path}"
@@ -51,7 +54,9 @@ class OllamaClient:
 
     def embed(self, text: str, *, model: str) -> list[float]:
         """Return an embedding vector for `text` from an embedding model."""
-        result = self._post("/api/embeddings", {"model": model, "prompt": text})
+        result = self._post(
+            "/api/embeddings", {"model": model, "prompt": text, "keep_alive": self.keep_alive}
+        )
         return [float(x) for x in result.get("embedding", [])]
 
     def list_models(self) -> list[str]:
@@ -76,6 +81,7 @@ class OllamaClient:
             "model": model or self.model,
             "messages": [m.to_dict() for m in messages],
             "stream": False,
+            "keep_alive": self.keep_alive,
             "options": {"temperature": temperature},
         }
         if format_json:
@@ -91,6 +97,7 @@ class OllamaClient:
             "model": model or self.model,
             "messages": [m.to_dict() for m in messages],
             "stream": True,
+            "keep_alive": self.keep_alive,
             "options": {"temperature": temperature},
         }
         url = f"{self.base_url}/api/chat"

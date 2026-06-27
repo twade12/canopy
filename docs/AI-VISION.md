@@ -140,6 +140,27 @@ Memories are embedded with **`nomic-embed-text`**. New facts are saved only if t
 the **most relevant** memories (not just the most recent) into context — which improves
 answers to abstract questions.
 
+## Performance & reliability (avoiding "stuck" chats)
+
+The app keeps the model warm (`keep_alive`), but the most common cause of a chat that
+"takes too long or hangs" is **Ollama swapping models**: a chat uses `gemma4:26b` while
+memory retrieval uses `nomic-embed-text`, and by default Ollama may only hold one model
+resident, so it reloads on each switch. Configure the **Ollama daemon** to keep both loaded
+and allow parallelism:
+
+```bash
+sudo systemctl edit ollama        # add an override:
+# [Service]
+# Environment=OLLAMA_MAX_LOADED_MODELS=2
+# Environment=OLLAMA_NUM_PARALLEL=2
+# Environment=OLLAMA_KEEP_ALIVE=30m
+sudo systemctl restart ollama
+```
+
+On CPU-only or low-RAM hosts a 26B model is simply slow on the first token; consider
+`gemma3:12b` for snappier interaction. You can always **Stop** a running answer with the
+button in the activity toast (bottom-right) or by pressing **Esc**.
+
 ## Notes & limitations
 
 - **Verify before you energize.** Vision parses can be wrong. Every CAN plan and answer
