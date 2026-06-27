@@ -383,27 +383,61 @@ class Store:
         d["check"] = d.pop("chk", "") or ""
         return d
 
+    def _insert_pcb(self, vehicle_id: int, attachment_id: int | None, c: dict) -> int:
+        cur = self._conn.execute(
+            "INSERT INTO pcb_component (vehicle_id, attachment_id, label, box, function,"
+            " chk, part, confidence, user_label, user_note, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (vehicle_id, attachment_id, c.get("label", ""), json.dumps(c.get("box", [])),
+             c.get("function", ""), c.get("check", ""), c.get("part", ""),
+             float(c.get("confidence", 0) or 0), c.get("user_label"), c.get("user_note"), _now()),
+        )
+        return cur.lastrowid
+
     def replace_pcb_components(
         self, vehicle_id: int, attachment_id: int | None, comps: list[dict]
     ) -> list[dict]:
-        """Store a fresh analysis for a board, replacing the project's previous set."""
-        self._conn.execute("DELETE FROM pcb_component WHERE vehicle_id = ?", (vehicle_id,))
-        for c in comps:
+        """Store an analysis for ONE board photo, replacing only that photo's components
+        (other photos in the project are kept, so a project can hold many boards)."""
+        if attachment_id is not None:
             self._conn.execute(
-                "INSERT INTO pcb_component (vehicle_id, attachment_id, label, box, function,"
-                " chk, part, confidence, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (vehicle_id, attachment_id, c.get("label", ""), json.dumps(c.get("box", [])),
-                 c.get("function", ""), c.get("check", ""), c.get("part", ""),
-                 float(c.get("confidence", 0) or 0), _now()),
-            )
+                "DELETE FROM pcb_component WHERE attachment_id = ?", (attachment_id,))
+        for c in comps:
+            self._insert_pcb(vehicle_id, attachment_id, c)
         self._conn.commit()
-        return self.list_pcb_components(vehicle_id)
+        return self.list_pcb_components(vehicle_id, attachment_id)
 
-    def list_pcb_components(self, vehicle_id: int) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT * FROM pcb_component WHERE vehicle_id = ? ORDER BY id", (vehicle_id,)
-        ).fetchall()
+    def add_pcb_component(self, vehicle_id: int, attachment_id: int | None, comp: dict) -> dict:
+        cid = self._insert_pcb(vehicle_id, attachment_id, comp)
+        self._conn.commit()
+        return self._pcb_row(self._conn.execute(
+            "SELECT * FROM pcb_component WHERE id = ?", (cid,)).fetchone())
+
+    def delete_pcb_component(self, comp_id: int) -> None:
+        self._conn.execute("DELETE FROM pcb_component WHERE id = ?", (comp_id,))
+        self._conn.commit()
+
+    def list_pcb_components(
+        self, vehicle_id: int, attachment_id: int | None = None
+    ) -> list[dict]:
+        if attachment_id is not None:
+            rows = self._conn.execute(
+                "SELECT * FROM pcb_component WHERE vehicle_id = ? AND attachment_id = ?"
+                " ORDER BY id", (vehicle_id, attachment_id)).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM pcb_component WHERE vehicle_id = ? ORDER BY id",
+                (vehicle_id,)).fetchall()
         return [self._pcb_row(r) for r in rows]
+
+    def list_pcb_photos(self, vehicle_id: int) -> list[dict]:
+        """PCB board photos in this project (newest first), with a component count."""
+        rows = self._conn.execute(
+            "SELECT a.id, a.note, a.created_at, COUNT(c.id) AS count FROM attachment a"
+            " LEFT JOIN pcb_component c ON c.attachment_id = a.id"
+            " WHERE a.vehicle_id = ? AND a.kind = 'pcb' GROUP BY a.id ORDER BY a.id DESC",
+            (vehicle_id,)).fetchall()
+        return [dict(r) for r in rows]
 
     def latest_pcb_attachment(self, vehicle_id: int) -> int | None:
         row = self._conn.execute(
@@ -413,8 +447,12 @@ class Store:
         return row["attachment_id"] if row else None
 
     def update_pcb_component(self, comp_id: int, **fields) -> dict | None:
-        allowed = {"user_label", "user_note", "label", "part"}
+        allowed = {"user_label", "user_note", "label", "part", "function", "confidence"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if "check" in fields and fields["check"] is not None:
+            sets["chk"] = fields["check"]
+        if "box" in fields and fields["box"] is not None:
+            sets["box"] = json.dumps(fields["box"])
         if sets:
             cols = ", ".join(f"{k} = ?" for k in sets)
             self._conn.execute(

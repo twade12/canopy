@@ -15,6 +15,7 @@ from canopy.vision.prompts import (
     ASSISTANT_SYSTEM,
     CAN_PLAN_SYSTEM,
     CHAT_SYSTEM,
+    COMPONENT_IDENTIFY_SYSTEM,
     EXTRACT_SYSTEM,
     IDENTIFY_SYSTEM,
     MEMORY_SUGGEST_SYSTEM,
@@ -73,6 +74,20 @@ def analyze_pcb(client: OllamaClient, images: list[str], context: str = "") -> d
             "confidence": float(c.get("confidence", 0) or 0),
         })
     return {"components": comps}
+
+
+def identify_component(client: OllamaClient, label: str, part: str = "", context: str = "") -> dict:
+    """Given a (newly drawn) component's name + optional marking, return its function + what to
+    check — the same metadata the bulk PCB analysis produces, for boxes the tech adds by hand."""
+    user = f"Component: {label}\nPart marking: {part or '(none)'}"
+    if context:
+        user += f"\n\nModule identity & pinout (ground your answer in this):\n{context}"
+    messages = [
+        ChatMessage("system", COMPONENT_IDENTIFY_SYSTEM),
+        ChatMessage("user", user),
+    ]
+    data = parse_json_object(client.chat(messages, temperature=0.1))
+    return {"function": str(data.get("function", "")), "check": str(data.get("check", ""))}
 
 
 def assistant_stream(client: OllamaClient, question: str, *, context: str, history: list):

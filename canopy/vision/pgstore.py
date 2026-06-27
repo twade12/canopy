@@ -315,25 +315,55 @@ class PgStore:
         d["check"] = d.pop("chk", "") or ""
         return d
 
+    def _insert_pcb(self, cur, vehicle_id: int, attachment_id: int | None, c: dict) -> int:
+        cur.execute(
+            "INSERT INTO pcb_component (vehicle_id, attachment_id, label, box, function,"
+            " chk, part, confidence, user_label, user_note, created_at)"
+            " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            (vehicle_id, attachment_id, c.get("label", ""), json.dumps(c.get("box", [])),
+             c.get("function", ""), c.get("check", ""), c.get("part", ""),
+             float(c.get("confidence", 0) or 0), c.get("user_label"), c.get("user_note"), _now()),
+        )
+        return cur.fetchone()["id"]
+
     def replace_pcb_components(
         self, vehicle_id: int, attachment_id: int | None, comps: list[dict]
     ) -> list[dict]:
         with self._conn.cursor() as cur:
-            cur.execute("DELETE FROM pcb_component WHERE vehicle_id = %s", (vehicle_id,))
-            for c in comps:
+            if attachment_id is not None:
                 cur.execute(
-                    "INSERT INTO pcb_component (vehicle_id, attachment_id, label, box, function,"
-                    " chk, part, confidence, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (vehicle_id, attachment_id, c.get("label", ""), json.dumps(c.get("box", [])),
-                     c.get("function", ""), c.get("check", ""), c.get("part", ""),
-                     float(c.get("confidence", 0) or 0), _now()),
-                )
-        return self.list_pcb_components(vehicle_id)
+                    "DELETE FROM pcb_component WHERE attachment_id = %s", (attachment_id,))
+            for c in comps:
+                self._insert_pcb(cur, vehicle_id, attachment_id, c)
+        return self.list_pcb_components(vehicle_id, attachment_id)
 
-    def list_pcb_components(self, vehicle_id: int) -> list[dict]:
-        rows = self._all(
-            "SELECT * FROM pcb_component WHERE vehicle_id = %s ORDER BY id", (vehicle_id,))
+    def add_pcb_component(self, vehicle_id: int, attachment_id: int | None, comp: dict) -> dict:
+        with self._conn.cursor() as cur:
+            cid = self._insert_pcb(cur, vehicle_id, attachment_id, comp)
+        return self._pcb_row(self._one("SELECT * FROM pcb_component WHERE id = %s", (cid,)))
+
+    def delete_pcb_component(self, comp_id: int) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM pcb_component WHERE id = %s", (comp_id,))
+
+    def list_pcb_components(
+        self, vehicle_id: int, attachment_id: int | None = None
+    ) -> list[dict]:
+        if attachment_id is not None:
+            rows = self._all(
+                "SELECT * FROM pcb_component WHERE vehicle_id = %s AND attachment_id = %s"
+                " ORDER BY id", (vehicle_id, attachment_id))
+        else:
+            rows = self._all(
+                "SELECT * FROM pcb_component WHERE vehicle_id = %s ORDER BY id", (vehicle_id,))
         return [self._pcb_row(r) for r in rows]
+
+    def list_pcb_photos(self, vehicle_id: int) -> list[dict]:
+        return self._all(
+            "SELECT a.id, a.note, a.created_at, COUNT(c.id) AS count FROM attachment a"
+            " LEFT JOIN pcb_component c ON c.attachment_id = a.id"
+            " WHERE a.vehicle_id = %s AND a.kind = 'pcb' GROUP BY a.id ORDER BY a.id DESC",
+            (vehicle_id,))
 
     def latest_pcb_attachment(self, vehicle_id: int) -> int | None:
         row = self._one(
@@ -342,8 +372,12 @@ class PgStore:
         return row["attachment_id"] if row else None
 
     def update_pcb_component(self, comp_id: int, **fields) -> dict | None:
-        allowed = {"user_label", "user_note", "label", "part"}
+        allowed = {"user_label", "user_note", "label", "part", "function", "confidence"}
         sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if "check" in fields and fields["check"] is not None:
+            sets["chk"] = fields["check"]
+        if "box" in fields and fields["box"] is not None:
+            sets["box"] = json.dumps(fields["box"])
         if sets:
             cols = ", ".join(f"{k} = %s" for k in sets)
             with self._conn.cursor() as cur:

@@ -217,6 +217,18 @@ NEVER invent a part number, value, pin mapping, or physics — only state what i
 on the board or supported by the provided pinout. An honest "" beats a guessed marking.
 Return ONLY JSON: {"components":[ {label, box, function, check, part, confidence}, ... ]}."""
 
+COMPONENT_IDENTIFY_SYSTEM = """You are a senior electronics-repair engineer. Given a component
+name and (optionally) the part marking/number read off an automotive/industrial module PCB,
+return JSON {"function": ..., "check": ...}:
+- "function": what this device most likely does in THIS module. If a part number is given, use it
+  to identify the device (manufacturer + type) and say so; tie it to the connector pinout when one
+  is provided.
+- "check": exactly what to inspect/measure and WHICH TOOL — multimeter (rails, continuity, diode),
+  oscilloscope (signals, ripple, comms), thermal camera (hot spots), magnifier (cracked solder /
+  corrosion). Be concrete and practical.
+Do NOT invent a part number or specifics you cannot support from the name/marking. Return ONLY the
+JSON object."""
+
 REPORT_SYSTEM = """You write a clear, professional repair report AND a reusable wiki procedure
 from a triage session transcript and the module's facts. Output Markdown with these sections:
 '# Repair Report', '## Module & Symptom', '## Diagnostic Steps' (numbered: check - where

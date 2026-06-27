@@ -121,6 +121,24 @@ class PcbComponentUpdate(BaseModel):
     user_note: str | None = None   # spec / correction / observation for the record
     label: str | None = None
     part: str | None = None
+    function: str | None = None
+    check: str | None = None
+    box: list[float] | None = None  # [x0,y0,x1,y1] fractions, after move/resize
+
+
+class PcbComponentNew(BaseModel):
+    attachment_id: int | None = None
+    label: str = "New component"
+    part: str = ""
+    box: list[float] = [0.4, 0.4, 0.6, 0.6]
+    function: str = ""
+    check: str = ""
+    identify: bool = True  # ask the model for function + what-to-check
+
+
+class PcbIdentifyBody(BaseModel):
+    label: str
+    part: str = ""
 
 
 class AttachmentUpdate(BaseModel):
@@ -673,20 +691,64 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             save_memory_if_novel(vehicle_id, summary, "pcb")  # retain for cross-module recall
         return {"components": stored, "attachment_id": attachment_id}
 
+    @app.get("/api/vehicles/{vehicle_id}/pcb-photos")
+    def pcb_photos(vehicle_id: int) -> list[dict]:
+        return store.list_pcb_photos(vehicle_id)
+
     @app.get("/api/vehicles/{vehicle_id}/pcb-components")
-    def pcb_components(vehicle_id: int) -> dict:
-        comps = store.list_pcb_components(vehicle_id)
-        return {"components": comps, "attachment_id": store.latest_pcb_attachment(vehicle_id)}
+    def pcb_components(vehicle_id: int, attachment_id: int | None = None) -> dict:
+        att = attachment_id
+        if att is None:
+            att = store.latest_pcb_attachment(vehicle_id)
+        comps = store.list_pcb_components(vehicle_id, att) if att is not None else []
+        return {"components": comps, "attachment_id": att,
+                "photos": store.list_pcb_photos(vehicle_id)}
+
+    @app.post("/api/vehicles/{vehicle_id}/pcb-component")
+    def pcb_component_add(vehicle_id: int, body: PcbComponentNew) -> dict:
+        function, check = body.function, body.check
+        if body.identify and not (function and check):
+            v = store.get_vehicle(vehicle_id)
+            ident = " ".join(filter(None, [v["year"], v["make"], v["model"], v["label"]]))
+            ctx = f"Module: {ident or '(unidentified)'}\nPinout:\n" \
+                  f"{_pinout_text(store.list_pinouts(vehicle_id))}"
+            try:
+                got = extract.identify_component(client, body.label, body.part, ctx)
+                function = function or got["function"]
+                check = check or got["check"]
+            except OllamaError:
+                pass
+        return store.add_pcb_component(vehicle_id, body.attachment_id, {
+            "label": body.label, "part": body.part, "box": body.box,
+            "function": function, "check": check, "confidence": 0.0,
+        })
+
+    @app.post("/api/vehicles/{vehicle_id}/pcb-component/identify")
+    def pcb_component_identify(vehicle_id: int, body: PcbIdentifyBody) -> dict:
+        v = store.get_vehicle(vehicle_id)
+        ident = " ".join(filter(None, [v["year"], v["make"], v["model"], v["label"]]))
+        ctx = f"Module: {ident or '(unidentified)'}\nPinout:\n" \
+              f"{_pinout_text(store.list_pinouts(vehicle_id))}"
+        try:
+            return extract.identify_component(client, body.label, body.part, ctx)
+        except OllamaError as e:
+            raise HTTPException(503, str(e)) from e
 
     @app.patch("/api/pcb-component/{comp_id}")
     def pcb_component_update(comp_id: int, body: PcbComponentUpdate) -> dict:
         row = store.update_pcb_component(
             comp_id, user_label=body.user_label, user_note=body.user_note,
-            label=body.label, part=body.part,
+            label=body.label, part=body.part, function=body.function,
+            check=body.check, box=body.box,
         )
         if row is None:
             raise HTTPException(404, "component not found")
         return row
+
+    @app.delete("/api/pcb-component/{comp_id}")
+    def pcb_component_delete(comp_id: int) -> dict:
+        store.delete_pcb_component(comp_id)
+        return {"ok": True}
 
     @app.post("/api/vehicles/{vehicle_id}/report")
     def repair_report(vehicle_id: int) -> dict:
