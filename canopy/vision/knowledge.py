@@ -81,17 +81,25 @@ def core_methodology() -> str:
     return ""
 
 
-def context_block(query: str, k: int = 2, max_chars: int = 4500) -> str:
-    """A compact CANOPY-knowledge block to prepend to a triage/assistant prompt."""
-    parts = ["CANOPY FIELD METHODOLOGY (house knowledge — apply this; cite the actual pinout, "
-             "never invent values):", core_methodology()]
-    seen = {"methodology"}
-    for a in relevant(query, k + 1):
-        if a.slug in seen:
-            continue
-        seen.add(a.slug)
+# Compact always-on doctrine (kept short so retrieved articles get most of the budget).
+CORE_RULES = (
+    "CANOPY METHOD: state the symptom as an observable fact; reason ONLY from the real pinout and "
+    "what you can measure — never invent voltages, part numbers, or physics. Inspect first, then "
+    "bring power up GROUND -> permanent 12V (current-limited) -> ignition -> reference rails, "
+    "watching inrush/quiescent current (high = short, near-zero = open). Divide and conquer by "
+    "functional block (power -> MCU+clock/reset -> comms -> inputs -> outputs); confirm a block's "
+    "precondition before blaming the next. Confirm a fault with a second independent measurement "
+    "before replacing anything; repair, then re-verify against the original symptom. A bad ground "
+    "mimics almost any fault. For safety/emissions/security systems, recommend authorized "
+    "procedures, not bypasses."
+)
+
+
+def context_block(query: str, k: int = 3, max_chars: int = 6500) -> str:
+    """A CANOPY-knowledge block to prepend to a triage/assistant prompt: the compact house
+    doctrine plus the most relevant full articles from the knowledge base for this symptom."""
+    parts = ["CANOPY FIELD KNOWLEDGE — apply these house best-practices; cite the actual pinout, "
+             "never invent values.", CORE_RULES]
+    for a in relevant(query, k):
         parts.append(f"--- {a.title} ---\n{a.body}")
-        if len([s for s in seen if s != "methodology"]) >= k:
-            break
-    block = "\n\n".join(p for p in parts if p)
-    return block[:max_chars]
+    return "\n\n".join(parts)[:max_chars]

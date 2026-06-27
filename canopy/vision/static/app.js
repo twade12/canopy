@@ -17,6 +17,7 @@ const ICON = {
   edit: '<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   arrow: '<path d="M5 19L19 5M19 5h-7M19 5v7"/>',
   expand: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>', compress: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
+  book: '<path d="M5 4h11a2 2 0 012 2v14H7a2 2 0 00-2 2z"/><path d="M9 4v14"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -33,8 +34,9 @@ const VIEWS = [
   { key: 'wiki', label: 'Wiki', icon: 'record' },
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
+  { key: 'knowledge', label: 'Knowledge', icon: 'book' },
 ];
-const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research']);  // usable without a project
+const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research', 'knowledge']);  // usable without a project
 const meta = k => VIEWS.find(v => v.key === k) || { label: k, icon: 'diagram' };
 
 const api = {
@@ -261,7 +263,7 @@ const anno = {
 
 function renderViewInto(view, c) {
   if (!c) return;
-  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch };
+  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge };
   if (globals[view]) return globals[view].call(ui, c);
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
   ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki })[view].call(ui, c);
@@ -274,6 +276,7 @@ const ui = {
     el('sidebarToggle').innerHTML = svg('menu'); el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon');
     el('resetBtn').innerHTML = svg('reset'); el('apiBtn').innerHTML = svg('api'); el('newRecBtn').innerHTML = svg('plus'); el('searchIcon').innerHTML = svg('search');
     el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search'); el('logoutBtn').innerHTML = svg('logout');
+    const kbtn = el('knowledgeBtn'); if (kbtn) kbtn.innerHTML = svg('book');
     api.get('/api/auth/status').then(s => { if (s.auth) el('logoutBtn').classList.remove('hidden'); }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.streamCtrl) this.cancelStream(); });
@@ -773,6 +776,29 @@ const ui = {
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(state.current.label || 'CANOPY wiki')}</title>
       <style>body{font-family:system-ui,sans-serif;max-width:820px;margin:24px auto;padding:0 16px;line-height:1.55;color:#111}img{max-width:100%;border:1px solid #ddd;border-radius:6px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:4px 8px;font-size:13px;text-align:left}h1,h2{border-bottom:1px solid #eee;padding-bottom:4px}code{background:#f3f3f3;padding:1px 4px;border-radius:4px}</style></head>
       <body>${md(state.wikiMd)}</body></html>`); w.document.close(); setTimeout(() => w.print(), 350); },
+
+  // ---------- house knowledge base browser ----------
+  viewKnowledge(c) {
+    if (state.kbList == null) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.loadKb(); return; }
+    c.innerHTML = `<div class="kb-col">
+      <div class="kb-search">${svg('search')}<input id="kbQ" placeholder="Search the troubleshooting knowledge base…" value="${esc(state.kbQuery || '')}" oninput="ui.kbSearch(this.value)"><span class="muted" style="font-size:11px;white-space:nowrap">${state.kbList.length} articles · used automatically in triage</span></div>
+      <div class="kb-wrap">
+        <div class="kb-list" id="kbList">${this._kbItems()}</div>
+        <div class="kb-doc md" id="kbDoc">${state.kbBody ? md(state.kbBody) : '<div class="muted" style="padding:14px">Select an article. This is the CANOPY house knowledge base — the AI already consults it during triage; here you can read and search it yourself.</div>'}</div>
+      </div></div>`;
+  },
+  _kbItems() {
+    const q = (state.kbQuery || '').toLowerCase();
+    const items = (state.kbList || []).filter(a => !q || (a.title + ' ' + a.tags.join(' ')).toLowerCase().includes(q));
+    return items.map(a => `<div class="kb-item ${a.slug === state.kbSlug ? 'sel' : ''}" onclick="ui.kbOpen('${a.slug}')"><div class="kb-title">${esc(a.title)}</div><div class="kb-tags">${a.tags.slice(0, 5).map(t => `<span class="tagchip">${esc(t)}</span>`).join('')}</div></div>`).join('') || '<div class="muted" style="padding:8px">No matches.</div>';
+  },
+  async loadKb() { try { state.kbList = await api.get('/api/knowledge'); } catch { state.kbList = []; } rerenderView('knowledge'); },
+  kbSearch(v) { state.kbQuery = v; const l = el('kbList'); if (l) l.innerHTML = this._kbItems(); },
+  async kbOpen(slug) { state.kbSlug = slug;
+    try { const a = await api.get('/api/knowledge/' + slug); state.kbBody = `# ${a.title}\n\n${a.body}`; }
+    catch { state.kbBody = '_Could not load this article._'; }
+    rerenderView('knowledge');
+  },
 
   // ---------- phone pairing ----------
   phoneModal() {

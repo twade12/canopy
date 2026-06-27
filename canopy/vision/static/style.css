@@ -250,6 +250,22 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .modal.lightbox .lb-cap { display: flex; gap: 8px; margin-top: 10px; }
 .modal.lightbox .lb-cap input { flex: 1; }
 
+/* house knowledge base browser */
+.kb-col { display: flex; flex-direction: column; height: 100%; }
+.kb-search { display: flex; align-items: center; gap: 7px; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+.kb-search svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.kb-search input { flex: 1; }
+.kb-wrap { flex: 1; display: flex; min-height: 0; }
+.kb-list { width: 250px; flex: none; overflow: auto; border-right: 1px solid var(--border); padding: 6px; }
+.kb-item { padding: 7px 9px; border-radius: 7px; cursor: pointer; margin-bottom: 3px; }
+.kb-item:hover { background: var(--panel-2); }
+.kb-item.sel { background: var(--panel-2); outline: 1px solid var(--accent); }
+.kb-item .kb-title { font-size: 12.5px; font-weight: 600; }
+.kb-item .kb-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.kb-doc { flex: 1; overflow: auto; padding: 4px 18px 24px; min-width: 0; }
+.kb-doc table { border-collapse: collapse; margin: 8px 0; }
+.kb-doc th, .kb-doc td { border: 1px solid var(--border); padding: 4px 9px; font-size: 12.5px; }
+
 /* project wiki */
 .wiki-col { display: flex; flex-direction: column; height: 100%; }
 .wiki-doc { flex: 1; overflow: auto; padding: 4px 18px 24px; max-width: 880px; }
