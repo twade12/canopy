@@ -19,12 +19,13 @@ const ICON = {
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
   triage: '<path d="M21 4a4 4 0 01-5.6 5.6L7 18l-2-2 8.4-8.4A4 4 0 0119 2l-3 3 1.5 1.5L21 4z"/>',
+  chip: '<rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>',
 };
 const svg = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON[n] || ''}</svg>`;
 const VIEWS = [
   { key: 'diagram', label: 'Diagram', icon: 'diagram' }, { key: 'pinout', label: 'Pinout', icon: 'pinout' },
   { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
-  { key: 'triage', label: 'Triage', icon: 'triage' },
+  { key: 'triage', label: 'Triage', icon: 'triage' }, { key: 'pcb', label: 'PCB', icon: 'chip' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
@@ -75,7 +76,7 @@ function defaultDock() { state.gid = 1; const g = () => state.gid++;
     { t: 'g', id: g(), tabs: ['diagram'], active: 'diagram' },
     { t: 's', dir: 'col', sizes: [58, 42], kids: [
       { t: 'g', id: g(), tabs: ['pinout', 'record'], active: 'pinout' },
-      { t: 'g', id: g(), tabs: ['chat', 'triage', 'plan', 'memories', 'api'], active: 'chat' }] }] }; }
+      { t: 'g', id: g(), tabs: ['triage', 'pcb', 'chat', 'plan', 'memories', 'api'], active: 'triage' }] }] }; }
 function saveDock() { try { localStorage.setItem('canopy-dock', JSON.stringify(state.dock)); } catch {} }
 function loadDock() { try { const d = JSON.parse(localStorage.getItem('canopy-dock')); if (d && d.t) { let mx = 0; (function walk(n){ if (n.t === 'g') mx = Math.max(mx, n.id); else n.kids.forEach(walk); })(d); state.gid = mx + 1; return d; } } catch {} return defaultDock(); }
 const parentOf = (node, t) => { if (node.t !== 's') return null; for (let i = 0; i < node.kids.length; i++) { if (node.kids[i] === t) return { parent: node, idx: i }; const r = parentOf(node.kids[i], t); if (r) return r; } return null; };
@@ -182,7 +183,7 @@ function renderViewInto(view, c) {
   const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch };
   if (globals[view]) return globals[view].call(ui, c);
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
-  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, memories: ui.viewMemories, record: ui.viewRecord })[view].call(ui, c);
+  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord })[view].call(ui, c);
 }
 
 // ================= UI =================
@@ -228,7 +229,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; this.renderRecords(); renderDock(); },
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
   viewDiagram(c) {
@@ -481,6 +482,38 @@ const ui = {
     } catch (e) { aiToast.done('Error'); alert(e.message); }
   },
   copyReport() { if (state.lastReport) navigator.clipboard?.writeText(state.lastReport); aiToast.show('Copied'); aiToast.hide(1200); },
+
+  // ---------- PCB photo analysis (boxed components) ----------
+  viewPcb(c) {
+    if (!state.pcbComponents) {
+      c.innerHTML = `<div id="pcbDz" class="dropzone">${svg('chip')}<div style="margin-top:8px"><strong>Drop a PCB photo</strong> (the ECU/module board), or click.</div><div class="muted" style="margin-top:4px">CANOPY boxes the components it recognizes and tells you what to check on each.</div></div>`;
+      const dz = c.querySelector('#pcbDz'); if (dz) { dz.onclick = () => this.pcbPick();
+        ['dragover', 'dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.toggle('drag', ev === 'dragover'); if (ev === 'drop' && e.dataTransfer.files[0]) this.pcbUpload(e.dataTransfer.files[0]); })); }
+      return;
+    }
+    const comps = state.pcbComponents;
+    const boxes = comps.map((p, i) => { const [x0, y0, x1, y1] = p.box;
+      return `<div class="pcb-box ${i === state.pcbSel ? 'sel' : ''}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})"><span class="lbl">${esc(p.label)}</span></div>`; }).join('');
+    const sel = state.pcbSel != null ? comps[state.pcbSel] : null;
+    c.innerHTML = `<div class="row" style="margin-bottom:8px"><button onclick="ui.pcbPick()">${svg('upload')} New photo</button><button onclick="ui.pcbToTriage()">${svg('triage')} Send board to Triage</button><span class="muted" style="align-self:center">${comps.length} components — click a box</span></div>
+      <div class="pcb-wrap"><img src="${state.pcbImage}" alt="PCB"><div style="position:absolute;inset:0">${boxes}</div></div>
+      ${sel ? `<div class="bench-section" style="margin-top:10px"><div class="pi-top" style="display:flex;align-items:center;gap:8px"><b style="font-size:14px">${esc(sel.label)}</b>${sel.part ? `<span class="tagchip">${esc(sel.part)}</span>` : ''}<span class="pi-conf" style="margin-left:auto;color:var(--muted);font-size:11px">conf ${Math.round(sel.confidence * 100)}%</span></div>
+        <div style="margin:6px 0;font-size:13px">${esc(sel.function)}</div><div class="warn" style="color:var(--cyan)">Check: ${esc(sel.check)}</div>
+        <button style="margin-top:8px" onclick="ui.pcbToTriage(${state.pcbSel})">Ask about this in Triage</button></div>` : ''}
+      <div class="pcb-list">${comps.map((p, i) => `<div class="pcb-item ${i === state.pcbSel ? 'sel' : ''}" onclick="ui.selectPcb(${i})"><div class="pi-top"><span class="pi-label">${esc(p.label)}</span><span class="pi-conf">${Math.round(p.confidence * 100)}%</span></div><div class="pi-detail">${esc(p.check)}</div></div>`).join('')}</div>`;
+  },
+  pcbPick() { if (!state.pcbFileInput) { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.onchange = e => { if (e.target.files[0]) this.pcbUpload(e.target.files[0]); }; state.pcbFileInput = inp; } state.pcbFileInput.value = ''; state.pcbFileInput.click(); },
+  async pcbUpload(file) {
+    const r = new FileReader(); r.onload = async () => { state.pcbImage = r.result; state.pcbSel = null;
+      await this.busy(null, 'analyzing board…', async () => { aiToast.show('Analyzing PCB…');
+        const res = await api.send(`/api/vehicles/${state.current.id}/pcb`, 'POST', { image: r.result });
+        state.pcbComponents = res.components || []; rerenderView('pcb'); aiToast.done(`${state.pcbComponents.length} components`); });
+    }; r.readAsDataURL(file);
+  },
+  selectPcb(i) { state.pcbSel = state.pcbSel === i ? null : i; rerenderView('pcb'); },
+  pcbToTriage(i) { state.triageImage = state.pcbImage; ensureView('triage'); const sel = i != null ? state.pcbComponents[i] : null;
+    const txt = sel ? `About the ${sel.label} on this board: ` : 'Here is the ECU board photo. The symptom is: ';
+    const inp = el('tIn'); if (inp) { inp.value = txt; inp.focus(); } const a = el('tAttach'); if (a) a.textContent = 'board photo attached — sends with your next message'; },
 
   // ---------- deep research ----------
   viewResearch(c) {

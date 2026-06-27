@@ -31,3 +31,6 @@ traces/*.asc
 
 # user-provided wiring diagrams in repo root (large binaries)
 /*.pdf
+
+# sample board photos (large)
+ECU_image_sample*

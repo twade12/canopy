@@ -109,6 +109,11 @@ class TriageBody(BaseModel):
     history: list[dict] = []
 
 
+class PcbBody(BaseModel):
+    image: str  # base64 (data URL or raw) of the PCB photo
+    note: str = ""
+
+
 def _parse_id(v: str) -> int:
     v = v.strip()
     return int(v, 16) if v.lower().startswith("0x") else int(v, 16)
@@ -213,8 +218,10 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     def relevant_memories(vehicle_id: int, question: str, k: int = 6) -> list[str]:
         """Top-k memories most semantically relevant to the question (else most recent)."""
-        mems = store.list_memories(vehicle_id)
         qvec = embed(question)
+        if qvec and hasattr(store, "search_memories"):  # server-side pgvector ANN
+            return [m["content"] for m in store.search_memories(qvec, k=k, vehicle_id=vehicle_id)]
+        mems = store.list_memories(vehicle_id)
         have_vecs = [(m["embedding"], m["content"]) for m in mems if m["embedding"]]
         if qvec and have_vecs:
             ranked = extract.rank_by_similarity(qvec, have_vecs, k=k)
@@ -522,10 +529,13 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     # --- global cross-vehicle assistant ----------------------------------------
     def assistant_context(question: str, k: int = 10) -> str:
-        mems = store.all_memories()
         qvec = embed(question)
-        have = [(m["embedding"], m) for m in mems if m["embedding"]]
-        chosen = extract.rank_by_similarity(qvec, have, k=k) if (qvec and have) else mems[:k]
+        if qvec and hasattr(store, "search_memories"):  # server-side pgvector ANN
+            chosen = store.search_memories(qvec, k=k)
+        else:
+            mems = store.all_memories()
+            have = [(m["embedding"], m) for m in mems if m["embedding"]]
+            chosen = extract.rank_by_similarity(qvec, have, k=k) if (qvec and have) else mems[:k]
         lines = [f"- [{m['project']}] {m['content']}" for m in chosen]
         projects = store.list_vehicles()
         summary = ", ".join(
@@ -604,6 +614,29 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             yield f"event: done\ndata: {json.dumps({})}\n\n"
 
         return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.post("/api/vehicles/{vehicle_id}/pcb")
+    def pcb_analyze(vehicle_id: int, body: PcbBody) -> dict:
+        b64 = _decode_b64_image(body.image)
+        small_b64 = b64
+        try:
+            raw = base64.b64decode(b64)
+            path = config.uploads_dir / f"v{vehicle_id}_pcb_{int(time.time() * 1000)}.png"
+            path.write_bytes(raw)
+            store.add_attachment(vehicle_id, str(path), kind="pcb", note=body.note[:200])
+            small_b64 = base64.b64encode(dg._downscale_png(raw)).decode()  # speed up inference
+        except (ValueError, OSError):
+            pass
+        try:
+            result = extract.analyze_pcb(client, [small_b64])
+        except OllamaError as e:
+            raise HTTPException(503, str(e)) from e
+        if result["components"]:
+            summary = "PCB components identified: " + ", ".join(
+                c["label"] for c in result["components"][:12] if c["label"]
+            )
+            save_memory_if_novel(vehicle_id, summary, "pcb")  # retain for cross-module recall
+        return result
 
     @app.post("/api/vehicles/{vehicle_id}/report")
     def repair_report(vehicle_id: int) -> dict:

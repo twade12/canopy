@@ -18,10 +18,40 @@ from canopy.vision.prompts import (
     EXTRACT_SYSTEM,
     IDENTIFY_SYSTEM,
     MEMORY_SUGGEST_SYSTEM,
+    PCB_SYSTEM,
     REPORT_SYSTEM,
     TAGS_SYSTEM,
     TRIAGE_SYSTEM,
 )
+
+
+def analyze_pcb(client: OllamaClient, images: list[str]) -> dict:
+    """Identify PCB components with bounding boxes (fractions 0..1) + function/check/tool."""
+    messages = [
+        ChatMessage("system", PCB_SYSTEM),
+        ChatMessage("user", "Analyze this PCB photo and box the components.", images=images),
+    ]
+    data = parse_json_object(client.chat(messages, temperature=0.0))
+    comps = []
+    for c in data.get("components", []) or []:
+        if not isinstance(c, dict):
+            continue
+        box = c.get("box") or []
+        if not (isinstance(box, list) and len(box) == 4):
+            continue
+        try:
+            box = [max(0.0, min(1.0, float(x))) for x in box]
+        except (TypeError, ValueError):
+            continue
+        comps.append({
+            "label": str(c.get("label", "")),
+            "box": box,
+            "function": str(c.get("function", "")),
+            "check": str(c.get("check", "")),
+            "part": str(c.get("part", "")),
+            "confidence": float(c.get("confidence", 0) or 0),
+        })
+    return {"components": comps}
 
 
 def assistant_stream(client: OllamaClient, question: str, *, context: str, history: list):

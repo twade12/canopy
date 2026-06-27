@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import psycopg
+from pgvector import Vector
 from psycopg.rows import dict_row
 
 from canopy.vision.store import normalize_connector
@@ -197,10 +198,11 @@ class PgStore:
 
     # --- memories --------------------------------------------------------------
     def add_memory(self, vehicle_id, content, *, kind="note", embedding=None) -> dict:
+        emb = Vector([float(x) for x in embedding]) if embedding else None
         row = self._one(
             "INSERT INTO memory (vehicle_id,kind,content,embedding,created_at)"
             " VALUES (%s,%s,%s,%s,%s) RETURNING *",
-            (vehicle_id, kind, content, embedding, _now()),
+            (vehicle_id, kind, content, emb, _now()),
         )
         return self._emb(row)
 
@@ -210,6 +212,28 @@ class PgStore:
 
     def delete_memory(self, memory_id: int) -> None:
         self._one("DELETE FROM memory WHERE id = %s RETURNING id", (memory_id,))
+
+    def search_memories(
+        self, query: list[float], k: int = 10, vehicle_id: int | None = None
+    ) -> list[dict]:
+        """Top-k memories by cosine similarity (server-side pgvector `<=>`)."""
+        if not query:
+            return []
+        query = Vector([float(x) for x in query])
+        sql = ("SELECT m.id, m.vehicle_id, m.kind, m.content, m.created_at, v.label,"
+               " 1 - (m.embedding <=> %s) AS score"
+               " FROM memory m JOIN vehicle v ON v.id = m.vehicle_id"
+               " WHERE m.embedding IS NOT NULL")
+        params: list = [query]
+        if vehicle_id is not None:
+            sql += " AND m.vehicle_id = %s"
+            params.append(vehicle_id)
+        sql += " ORDER BY m.embedding <=> %s LIMIT %s"
+        params += [query, k]
+        rows = self._all(sql, tuple(params))
+        for r in rows:
+            r["project"] = r.get("label") or f"project {r['vehicle_id']}"
+        return rows
 
     def all_memories(self) -> list[dict]:
         rows = self._all(

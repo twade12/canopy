@@ -149,6 +149,21 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .api-ep .p { font-family: ui-monospace, monospace; font-size: 12.5px; } .api-ep .u { color: var(--muted); font-size: 12.5px; margin: 4px 0; }
 .api-ep pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; font-size: 11.5px; overflow-x: auto; margin: 4px 0 0; }
 
+/* PCB annotation */
+.pcb-wrap { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+.pcb-wrap img { display: block; max-width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+.pcb-box { position: absolute; border: 2px solid var(--cyan); border-radius: 4px; cursor: pointer; box-sizing: border-box; transition: border-color .1s; }
+.pcb-box:hover { border-color: var(--accent); }
+.pcb-box .lbl { position: absolute; top: -17px; left: -2px; background: var(--cyan); color: #fff; font-size: 10px; line-height: 1.4; padding: 0 5px; border-radius: 4px 4px 0 0; white-space: nowrap; font-weight: 700; }
+.pcb-box.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); z-index: 3; }
+.pcb-box.sel .lbl { background: var(--accent); }
+.pcb-list { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+.pcb-item { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 13px; }
+.pcb-item:hover, .pcb-item.sel { border-color: var(--accent); background: var(--accent-soft); }
+.pcb-item .pi-top { display: flex; align-items: center; gap: 8px; }
+.pcb-item .pi-label { font-weight: 700; } .pcb-item .pi-conf { margin-left: auto; font-size: 10px; color: var(--muted); }
+.pcb-item .pi-detail { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
 /* tooltip + drop indicator */
 #tooltip { position: fixed; z-index: 999; max-width: 280px; background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 9px; padding: 9px 11px; box-shadow: var(--shadow); font-size: 12.5px; pointer-events: none; display: none; }
 #tooltip .tt-pin { font-weight: 800; color: var(--cyan); } #tooltip .tt-sig { font-weight: 700; } #tooltip .tt-row { color: var(--muted); margin-top: 2px; }

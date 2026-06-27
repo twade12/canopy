@@ -65,10 +65,11 @@ multimodal, AI-guided session.
 - **Accounts & roles.** Replace the single shared password with real users (tech/engineer/admin),
   org/workspace scoping, per-action attribution. Keep it simple: email+password or SSO (Authentik/
   Google) behind the existing middleware; sessions already cookie-based.
-- **Postgres + pgvector.** ✅ *Done (backend):* a `PgStore` ([pgstore.py](../canopy/vision/pgstore.py))
+- **Postgres + pgvector.** ✅ *Done:* a `PgStore` ([pgstore.py](../canopy/vision/pgstore.py))
   mirrors the SQLite store and is selected by `CANOPY_DATABASE_URL`; embeddings live in a real
-  `vector` column. *Remaining:* server-side ANN search (HNSW index + `<=>` retrieval) instead of
-  the current Python-side ranking, and object storage (S3/MinIO) for diagrams/photos.
+  `vector` column with **server-side similarity search** (`<=>` / `search_memories`) used for
+  the Assistant + triage retrieval when on Postgres. *Remaining:* an HNSW index once the
+  embedding dim is fixed, and object storage (S3/MinIO) for diagrams/photos.
 - **Domain objects.** `Workspace → Module → RepairSession → Observation/Photo → Case`, plus
   `Project` for triage. Provenance on every memory (who/when/which session).
 
@@ -76,10 +77,13 @@ multimodal, AI-guided session.
 - **Session engine.** A stateful, multimodal chat tied to a module: the model is given the
   module's pinout, prior cases (RAG), and the running observation log; it returns a *next-step*
   recommendation + the tool to use, and a structured slot to record the result.
-- **PCB component identification.** Upload a board photo (whole ECU or a region) → the multimodal
-  model identifies components (ICs, regulators, transceivers, FETs, connectors), states likely
-  **function**, **what to check** on each (continuity, rail voltage, waveform, temperature), and
-  **which instrument** to use. Pair with reference search (Phase research) for datasheets.
+- **PCB component identification.** ✅ *Done (v1):* the **PCB** tab takes a board photo and the
+  model returns **labeled bounding boxes** for the major components (MCU, regulators, CAN
+  transceivers, drivers, bulk caps, the harness connector), each with its **function**, **what to
+  check** and **which instrument**. Boxes overlay the photo and are clickable; the analysis is
+  saved as a memory and can be pushed into a Triage session. *Remaining:* better localization on
+  cluttered photos (higher-res/region crop, stronger vision model), datasheet lookup via Research,
+  and using the wiring-diagram context to inform the component analysis.
 - **Protocol awareness.** Identify the serial/diagnostic protocols a module uses (CAN, CAN-FD,
   **J1939**, **J1850/SAE**, K-line, LIN, GMLAN) and the **OBD-II connector pinout** so a tech can
   wire to the right pins. (Seed this as built-in reference knowledge + research.)
