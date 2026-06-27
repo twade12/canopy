@@ -16,6 +16,7 @@ const ICON = {
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', warn: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
   edit: '<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   arrow: '<path d="M5 19L19 5M19 5h-7M19 5v7"/>',
+  expand: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>', compress: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -102,6 +103,7 @@ function savePcbZoom(id, z) { try { const m = JSON.parse(localStorage.getItem('c
 const parentOf = (node, t) => { if (node.t !== 's') return null; for (let i = 0; i < node.kids.length; i++) { if (node.kids[i] === t) return { parent: node, idx: i }; const r = parentOf(node.kids[i], t); if (r) return r; } return null; };
 const groupOfView = (node, v) => node.t === 'g' ? (node.tabs.includes(v) ? node : null) : node.kids.reduce((a, k) => a || groupOfView(k, v), null);
 const firstGroup = n => n.t === 'g' ? n : firstGroup(n.kids[0]);
+function findGroupById(n, id) { if (n.t === 'g') return n.id === id ? n : null; for (const k of n.kids) { const f = findGroupById(k, id); if (f) return f; } return null; }
 const placedViews = (n, s = new Set()) => { if (n.t === 'g') n.tabs.forEach(t => s.add(t)); else n.kids.forEach(k => placedViews(k, s)); return s; };
 
 function removeViewFromGroup(v) { const g = groupOfView(state.dock, v); if (!g) return; g.tabs.splice(g.tabs.indexOf(v), 1); if (g.active === v) g.active = g.tabs[g.tabs.length - 1] || null; if (!g.tabs.length) removeGroup(g); }
@@ -114,14 +116,25 @@ function splitWith(target, v, side) {
   if (info && info.parent.dir === dir) { const at = before ? info.idx : info.idx + 1; info.parent.kids.splice(at, 0, ng); info.parent.sizes.splice(at, 0, 100); }
   else { const ns = { t: 's', dir, sizes: [100, 100], kids: before ? [ng, target] : [target, ng] }; if (target === state.dock) state.dock = ns; else { const p = parentOf(state.dock, target); p.parent.kids[p.idx] = ns; } }
 }
-function ensureView(v) { if (!groupOfView(state.dock, v)) { const g = firstGroup(state.dock); g.tabs.push(v); g.active = v; } else groupOfView(state.dock, v).active = v; saveDock(); renderDock(); }
+// Reveal a view with minimal churn: only rebuild the whole dock when the view doesn't exist yet.
+// If it already exists, just activate its group (or do nothing if already active) so unrelated
+// panels — e.g. the Triage transcript and its scroll position — are left untouched.
+function ensureView(v) {
+  const g = groupOfView(state.dock, v);
+  if (!g) { const fg = firstGroup(state.dock); fg.tabs.push(v); fg.active = v; saveDock(); renderDock(); }
+  else if (g.active !== v) { g.active = v; saveDock(); rerenderGroup(g); }
+}
 
 function computeZone(r, x, y) { const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height, m = Math.min(fx, 1 - fx, fy, 1 - fy);
   if (m > 0.22) return 'center'; return m === fx ? 'left' : m === 1 - fx ? 'right' : m === fy ? 'top' : 'bottom'; }
 function showZone(z, side) { const b = { left: ['0', '0', '50%', '100%'], right: ['50%', '0', '50%', '100%'], top: ['0', '0', '100%', '50%'], bottom: ['0', '50%', '100%', '50%'], center: ['8%', '8%', '84%', '84%'] }[side];
   z.style.display = 'block'; z.style.left = b[0]; z.style.top = b[1]; z.style.width = b[2]; z.style.height = b[3]; }
 
-function renderDock() { const ws = el('workspace'); ws.innerHTML = ''; ws.appendChild(renderNode(state.dock)); }
+function renderDock() { const ws = el('workspace'); ws.innerHTML = '';
+  if (state.maxGroup != null) { const node = findGroupById(state.dock, state.maxGroup);
+    if (node) { const g = renderGroup(node); g.classList.add('maximized'); ws.appendChild(g); return; }
+    state.maxGroup = null; }
+  ws.appendChild(renderNode(state.dock)); }
 function renderNode(node) {
   if (node.t === 'g') return renderGroup(node);
   const box = document.createElement('div'); box.className = 'split ' + node.dir;
@@ -164,7 +177,11 @@ function buildTabstrip(group) {
     tab.ondragstart = e => { state.drag = { view: v }; tab.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; };
     tab.ondragend = () => { tab.classList.remove('dragging'); state.drag = null; }; strip.appendChild(tab); });
   const hidden = VIEWS.filter(v => !placedViews(state.dock).has(v.key));
-  if (hidden.length) { const add = document.createElement('div'); add.className = 'tab'; add.innerHTML = svg('plus'); add.title = 'Add a panel'; add.onclick = e => addMenu(e, group, hidden); strip.appendChild(add); }
+  if (hidden.length) { const add = document.createElement('div'); add.className = 'tab tab-icon'; add.innerHTML = svg('plus'); add.title = 'Add a panel'; add.onclick = e => addMenu(e, group, hidden); strip.appendChild(add); }
+  const maxed = state.maxGroup === group.id;
+  const mx = document.createElement('div'); mx.className = 'tab tab-icon'; mx.style.marginLeft = 'auto';
+  mx.title = maxed ? 'Restore panel' : 'Maximize panel'; mx.innerHTML = svg(maxed ? 'compress' : 'expand');
+  mx.onclick = () => { state.maxGroup = maxed ? null : group.id; renderDock(); }; strip.appendChild(mx);
   return strip;
 }
 function addMenu(e, group, hidden) { e.stopPropagation(); const m = document.createElement('div'); m.className = 'addmenu';
@@ -628,8 +645,8 @@ const ui = {
       const ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0);
       const lw = Math.max(2, cv.width / 450); const fs = Math.max(13, cv.width / 75); ctx.font = `bold ${fs}px sans-serif`; ctx.textBaseline = 'bottom';
       (state.pcbComponents || []).forEach((p, i) => { const [x0, y0, x1, y1] = p.box; const x = x0 * cv.width, y = y0 * cv.height, w = (x1 - x0) * cv.width, h = (y1 - y0) * cv.height;
-        const on = i === state.pcbSel; ctx.lineWidth = on ? lw * 1.6 : lw; ctx.strokeStyle = on ? '#0f9d6b' : '#0e8aa6';
-        ctx.strokeRect(x, y, w, h); const nm = p.user_label || p.label; const tw = ctx.measureText(nm).width; ctx.fillStyle = on ? '#0f9d6b' : '#0e8aa6'; ctx.fillRect(x, y - fs - 4, tw + 10, fs + 4); ctx.fillStyle = '#fff'; ctx.fillText(nm, x + 5, y - 2); });
+        const on = i === state.pcbSel; ctx.lineWidth = on ? lw * 1.6 : lw; ctx.strokeStyle = on ? '#ef4444' : 'rgba(239,68,68,.9)';
+        ctx.strokeRect(x, y, w, h); const nm = p.user_label || p.label; const tw = ctx.measureText(nm).width; ctx.fillStyle = '#ef4444'; ctx.fillRect(x, y - fs - 4, tw + 10, fs + 4); ctx.fillStyle = '#fff'; ctx.fillText(nm, x + 5, y - 2); });
       const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = `${(state.current.label || 'pcb').replace(/[^\w.-]/g, '_')}_annotated.png`; a.click();
       aiToast.done('Saved annotated PNG');
     } catch (e) { aiToast.done('Error'); alert(e.message); }
