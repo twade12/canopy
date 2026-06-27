@@ -47,6 +47,7 @@ packages = ["canopy"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "canopy/vision/static" = "canopy/vision/static"
+"canopy/vision/knowledge" = "canopy/vision/knowledge"
 
 [tool.ruff]
 line-length = 100

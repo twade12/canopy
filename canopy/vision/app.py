@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from canopy.vision import auth, extract
 from canopy.vision import bench as benchmod
 from canopy.vision import diagram as dg
+from canopy.vision import knowledge as kb
 from canopy.vision import research as researchmod
 from canopy.vision.api_reference import API_REFERENCE
 from canopy.vision.config import VisionConfig
@@ -564,6 +565,7 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             f"{v['label'] or 'project'} ({', '.join(v.get('tags', [])[:4])})" for v in projects[:12]
         )
         return (
+            kb.context_block(question) + "\n\n"
             f"KNOWN PROJECTS: {summary or '(none yet)'}\n\n"
             f"RELEVANT ACCUMULATED MEMORIES:\n" + ("\n".join(lines) if lines else "- (none yet)")
         )
@@ -602,7 +604,7 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     @app.post("/api/vehicles/{vehicle_id}/triage/stream")
     def triage_stream(vehicle_id: int, body: TriageBody) -> StreamingResponse:
-        context = chat_context(vehicle_id, body.message)
+        context = kb.context_block(body.message) + "\n\n" + chat_context(vehicle_id, body.message)
         history = [
             ChatMessage(m.get("role", "user"), m.get("content", ""))
             for m in body.history if m.get("role") in ("user", "assistant")
@@ -807,6 +809,18 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             except OllamaError:
                 out["summary"] = ""
         return out
+
+    # --- house knowledge base (curated troubleshooting best-practices) ---------
+    @app.get("/api/knowledge")
+    def knowledge_list() -> list[dict]:
+        return [{"slug": a.slug, "title": a.title, "tags": a.tags} for a in kb.load_articles()]
+
+    @app.get("/api/knowledge/{slug}")
+    def knowledge_article(slug: str) -> dict:
+        a = next((a for a in kb.load_articles() if a.slug == slug), None)
+        if a is None:
+            raise HTTPException(404, "no such article")
+        return {"slug": a.slug, "title": a.title, "tags": a.tags, "body": a.body}
 
     # --- USB-to-CAN bench ------------------------------------------------------
     bench = benchmod.BenchManager()
