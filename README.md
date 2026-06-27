@@ -70,24 +70,31 @@ to that header. This is how a generic proprietary plug becomes something `canopy
 
 ---
 
-## Status — Phase 0 (Bus MVP), zero hardware required
+## Status — Phase 0 complete, Phase 1 underway (zero hardware required)
 
 The whole point of SocketCAN's virtual bus (`vcan0`) is that the entire stack is
-buildable and testable before a single relay clicks.
+buildable and testable before a single relay clicks. The **"car in a box" — a real
+restbus with alive-counters + checksums and a UDS-answering ECU — already runs on a
+virtual bus today.**
 
 **Shipped now:**
 
 | Module | What it does |
 |---|---|
-| [`canopy/hal/can_iface.py`](canopy/hal/can_iface.py) | Backend-agnostic `python-can` wrapper (SocketCAN default). The one HAL driver in this phase. |
-| [`canopy/decode.py`](canopy/decode.py) | `cantools` signal-level DBC decode. |
-| [`canopy/trace.py`](canopy/trace.py) | Vector-compatible **BLF** raw-trace logging + replay. |
-| [`canopy/cli.py`](canopy/cli.py) | `send`, `monitor`, `decode` commands. |
-| [`tests/`](tests/) | Round-trip + decode + trace tests against `vcan0`, falling back to an in-process `virtual` bus on CI. |
-| [`docker-compose.yml`](docker-compose.yml) | Postgres + TimescaleDB + pgvector (provisioned now; schema lands in Phase 1). |
+| [`canopy/hal/can_iface.py`](canopy/hal/can_iface.py) | Backend-agnostic `python-can` wrapper (SocketCAN default). |
+| [`canopy/decode.py`](canopy/decode.py) · [`trace.py`](canopy/trace.py) | `cantools` DBC decode; Vector-compatible **BLF** logging + replay. |
+| [`canopy/sim/`](canopy/sim/) | **Virtual vehicle**: periodic restbus scheduler, **E2E** rolling alive-counter + checksum (`crc8_j1850`/`sum8`/`xor8`), network management, per-ECU **UDS server**, YAML/DBC loader. |
+| [`canopy/hal/isotp.py`](canopy/hal/isotp.py) · [`hal/uds.py`](canopy/hal/uds.py) | ISO-TP transport + `udsoncan` **tester client** (session, VIN, read/clear DTC). |
+| [`canopy/data/`](canopy/data/) | SQLAlchemy models for `Module/Adapter/TestRun/Observation/SymptomVector/Case` (portable now, Postgres+Timescale+pgvector in Phase 1). |
+| [`canopy/cli.py`](canopy/cli.py) | `send`, `monitor`, `decode`, **`sim run`**, **`uds vin/read-dtc/clear-dtc`**. |
+| [`vehicles/ford_f250_6.7.yaml`](vehicles/ford_f250_6.7.yaml) | Reference platform: PCM/TCM/BCM restbus + PCM UDS personality. |
+| [`tests/`](tests/) | 17 tests incl. a multi-frame UDS round-trip and E2E restbus, against `vcan0` (CI falls back to an in-process `virtual` bus). |
 
-**Not yet implemented** (later phases): UDS/OBD diagnostics, restbus simulation, module
-profiles, PSU/INA228/matrix/scope drivers, vision pipeline, diagnosis engine, web UI.
+**Hardware design:** see [docs/HARDWARE.md](docs/HARDWARE.md) for the modular
+"car-in-a-box" schematics + BOM (incl. a one-week off-the-shelf prototype).
+
+**Not yet implemented** (later phases): PSU/INA228/matrix/scope drivers, power sequencing,
+module profiles + runner, vision pipeline, diagnosis engine, web UI.
 
 ---
 
@@ -151,6 +158,21 @@ canopy monitor vcan0 --timeout 5 --dbc dbc/platform.dbc --trace
 
 # Decode a recorded BLF trace
 canopy decode traces/20260626T184500Z_monitor.blf --dbc dbc/platform.dbc
+```
+
+### Car in a box (simulator + tester)
+
+Bring up a full virtual vehicle on one terminal, then diagnose it from another — the DUT
+(or an external scan tool) can't tell it from a real car:
+
+```bash
+# Terminal 1 — stand up the simulated F-250 (PCM/TCM/BCM restbus + PCM UDS)
+canopy sim run vehicles/ford_f250_6.7.yaml --channel vcan0
+
+# Terminal 2 — act as the tester
+canopy uds vin vcan0           # → 1FT7W2BT0GEA12345  (multi-frame ISO-TP)
+canopy uds read-dtc vcan0      # → 0x010100 status=0x09 …
+canopy uds clear-dtc vcan0
 ```
 
 Self-test loop on one machine:

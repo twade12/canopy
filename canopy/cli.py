@@ -115,5 +115,98 @@ def decode(
     typer.echo(f"{len(messages)} frame(s)")
 
 
+# --- sim: the "car in a box" --------------------------------------------------
+sim_app = typer.Typer(help="Run a software-defined virtual vehicle (restbus + UDS).")
+app.add_typer(sim_app, name="sim")
+
+
+@sim_app.command("run")
+def sim_run(
+    vehicle: Path = typer.Argument(..., exists=True, help="Vehicle YAML (see vehicles/)."),
+    channel: str = typer.Option("vcan0", help="CAN channel to broadcast on."),
+    interface: str = typer.Option("socketcan", help="python-can backend."),
+    duration: float = typer.Option(0.0, help="Seconds to run; 0 = until Ctrl-C."),
+) -> None:
+    """Bring up every virtual ECU's restbus (and UDS responders) on a channel."""
+    import time
+
+    from canopy.sim.loader import load_vehicle
+
+    config = _make_config(channel, interface, fd=False)
+    with CanInterface(config) as iface:
+        car = load_vehicle(vehicle, iface)
+        ecus = ", ".join(e.name for e in car.ecus)
+        typer.echo(f"vehicle '{car.name}' up on {channel}: ECUs [{ecus}]")
+        car.start()
+        try:
+            if duration > 0:
+                time.sleep(duration)
+            else:
+                typer.echo("broadcasting… Ctrl-C to stop")
+                while True:
+                    time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            car.stop()
+    typer.echo(f"stopped; {car.frames_sent} frame(s) sent")
+
+
+# --- uds: the station as tester -----------------------------------------------
+uds_app = typer.Typer(help="UDS diagnostics (station acts as the tester).")
+app.add_typer(uds_app, name="uds")
+
+
+def _uds_client(channel: str, interface: str, req: str, rsp: str):
+    from canopy.hal.uds import UdsClient
+
+    config = _make_config(channel, interface, fd=False)
+    return UdsClient(channel=config, request_id=_parse_id(req), response_id=_parse_id(rsp))
+
+
+@uds_app.command("vin")
+def uds_vin(
+    channel: str = typer.Argument(..., help="CAN channel, e.g. vcan0."),
+    interface: str = typer.Option("socketcan", help="python-can backend."),
+    req: str = typer.Option("0x7E0", help="Tester request id."),
+    rsp: str = typer.Option("0x7E8", help="ECU response id."),
+) -> None:
+    """Read the VIN (DID 0xF190)."""
+    with _uds_client(channel, interface, req, rsp) as uds:
+        uds.change_session(1)
+        typer.echo(uds.read_vin())
+
+
+@uds_app.command("read-dtc")
+def uds_read_dtc(
+    channel: str = typer.Argument(..., help="CAN channel, e.g. vcan0."),
+    interface: str = typer.Option("socketcan", help="python-can backend."),
+    req: str = typer.Option("0x7E0", help="Tester request id."),
+    rsp: str = typer.Option("0x7E8", help="ECU response id."),
+    mask: str = typer.Option("0xFF", help="DTC status mask."),
+) -> None:
+    """Read stored DTCs by status mask (service 0x19)."""
+    with _uds_client(channel, interface, req, rsp) as uds:
+        uds.change_session(1)
+        dtcs = uds.read_dtcs(_parse_id(mask))
+    for d in dtcs:
+        typer.echo(f"{d.code_hex}  status=0x{d.status:02X}")
+    typer.echo(f"{len(dtcs)} DTC(s)")
+
+
+@uds_app.command("clear-dtc")
+def uds_clear_dtc(
+    channel: str = typer.Argument(..., help="CAN channel, e.g. vcan0."),
+    interface: str = typer.Option("socketcan", help="python-can backend."),
+    req: str = typer.Option("0x7E0", help="Tester request id."),
+    rsp: str = typer.Option("0x7E8", help="ECU response id."),
+) -> None:
+    """Clear stored DTCs (service 0x14)."""
+    with _uds_client(channel, interface, req, rsp) as uds:
+        uds.change_session(1)
+        uds.clear_dtcs()
+    typer.echo("DTCs cleared")
+
+
 if __name__ == "__main__":
     app()

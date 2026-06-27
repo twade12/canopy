@@ -1,0 +1,41 @@
+# Reference platform: 2016 Ford F-250 Super Duty 6.7L Power Stroke (powertrain bus).
+# The "car in a box" definition — which virtual ECUs broadcast what, with E2E protection,
+# plus the PCM's UDS diagnostic personality. Run with: canopy sim run vehicles/ford_f250_6.7.yaml
+name: ford_f250_6.7
+dbc: ../dbc/ford_f250_powertrain.dbc
+
+ecus:
+  - name: PCM                     # Powertrain Control Module — the usual DUT
+    request_id: 0x7E0
+    response_id: 0x7E8
+    uds:
+      vin: "1FT7W2BT0GEA12345"
+      dtcs:
+        - { code: 0x010100, status: 0x09 }   # confirmed + test-failed
+        - { code: 0x008700, status: 0x08 }   # confirmed (history)
+    messages:
+      - message: PCM_Powertrain
+        period_ms: 10
+        signals: { EngineRPM: 800, VehicleSpeed: 0 }
+        e2e:
+          counter_signal: AliveCounter
+          checksum_signal: Checksum
+          algorithm: crc8_j1850
+          counter_max: 15
+
+  - name: TCM                     # Transmission Control Module
+    messages:
+      - message: TCM_Status
+        period_ms: 20
+        signals: { GearPosition: 1, TransTempC: 80 }
+        e2e:
+          counter_signal: AliveCounter
+          checksum_signal: Checksum
+          algorithm: crc8_j1850
+          counter_max: 15
+
+  - name: BCM                     # Body Control Module
+    messages:
+      - message: BCM_Body
+        period_ms: 100
+        signals: { IgnitionStatus: 1, DoorAjar: 0, Odometer: 84231 }
