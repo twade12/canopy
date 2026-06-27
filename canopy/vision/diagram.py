@@ -63,15 +63,51 @@ def render_page(path: Path, mime: str, index: int = 0) -> bytes:
     return _downscale_png(path.read_bytes())
 
 
+ROW_TOL = 3.2  # points; words within this Y distance share a visual row
+COL_GAP = 12.0  # points; a larger X gap is treated as a column break
+
+
+def _layout_text(words: list[tuple]) -> str:
+    """Reconstruct row/column-aligned text from positioned words.
+
+    PyMuPDF ``get_text("words")`` returns ``(x0, y0, x1, y1, word, block, line, n)``.
+    The default linear ``get_text()`` follows the PDF content-stream order, which on
+    schematic-style diagrams (e.g. GM/ALLDATA) scrambles a connector's pin numbers,
+    signal names, colors, and circuits into three separate clumps — actively misleading
+    the model. Grouping words by Y into rows and ordering by X keeps each pin's
+    ``number  signal  color  circuit`` together on one line, so the model can read across.
+    """
+    if not words:
+        return ""
+    rows: list[list[tuple]] = []
+    for w in sorted(words, key=lambda w: (w[1], w[0])):
+        if rows and abs(w[1] - rows[-1][0][1]) <= ROW_TOL:
+            rows[-1].append(w)
+        else:
+            rows.append([w])
+    lines = []
+    for row in rows:
+        row.sort(key=lambda w: w[0])
+        s, prev_x1 = "", None
+        for w in row:
+            if prev_x1 is not None:
+                s += "    " if (w[0] - prev_x1) > COL_GAP else " "
+            s += w[4]
+            prev_x1 = w[2]
+        lines.append(s)
+    return "\n".join(lines)
+
+
 def page_text(path: Path, mime: str, index: int = 0) -> str:
-    """Return the embedded text layer for a PDF page ('' for images or empty pages)."""
+    """Return a layout-reconstructed text layer for a PDF page ('' for images)."""
     if not is_pdf(path.name, mime):
         return ""
     import fitz
 
     with fitz.open(str(path)) as doc:
         index = max(0, min(index, doc.page_count - 1))
-        return doc[index].get_text().strip()
+        page = doc[index]
+        return _layout_text(page.get_text("words")) or page.get_text().strip()
 
 
 def b64(images: list[bytes]) -> list[str]:

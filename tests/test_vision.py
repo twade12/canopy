@@ -30,6 +30,19 @@ class FakeClient:
         return self.reply
 
 
+def test_layout_text_groups_rows_by_position() -> None:
+    from canopy.vision.diagram import _layout_text
+
+    # (x0, y0, x1, y1, word, ...) — two visual rows; tokens deliberately out of stream order.
+    words = [
+        (80, 100, 100, 108, "418"), (10, 100, 14, 108, "1"), (40, 100, 60, 108, "BRN"),
+        (40, 120, 60, 128, "LT"), (10, 120, 14, 128, "2"), (62, 120, 78, 128, "GRN"),
+    ]
+    lines = _layout_text(words).splitlines()
+    assert lines[0].split() == ["1", "BRN", "418"]      # row reassembled left-to-right
+    assert lines[1].split() == ["2", "LT", "GRN"]
+
+
 def test_parse_json_object_handles_fences_and_prose() -> None:
     assert parse_json_object('```json\n{"a": 1}\n```') == {"a": 1}
     assert parse_json_object('sure!\n{"b": 2} done') == {"b": 2}
