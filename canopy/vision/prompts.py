@@ -177,32 +177,45 @@ Write these precisely and unambiguously — they become a shareable wiki procedu
 technicians. Cite pins/connectors, never invent values, keep replies actionable, and include a
 safety note before anything is energized."""
 
-PCB_SYSTEM = """You are analyzing a PHOTOGRAPH of an automotive/industrial electronic module
-PCB (e.g. an ECU, BCM, TCM, instrument cluster). Identify the major components and functional
-regions visible in the image. For EACH, return:
-- "label": short name, e.g. "Microcontroller / MCU", "5V LDO regulator", "CAN transceiver",
-  "H-bridge / motor driver", "Low-side MOSFET driver", "Electrolytic capacitor bank",
-  "Crystal / oscillator", "Vehicle harness connector", "Flyback / boost converter",
-  "EEPROM / Flash", "Voltage reference", "Power inductor", "Relay".
-- "box": bounding box as [ymin, xmin, ymax, xmax] — integers 0-1000 normalized to the image
-  (origin top-left; y along height, x along width). Example: a chip in the upper-left is about
-  [80, 60, 240, 260]. Box each component tightly around the part you actually see.
-- "function": what it does in this module.
-- "check": what to inspect/measure and WHICH TOOL — multimeter (rails, continuity, diode),
-  oscilloscope (signals, ripple, comms), thermal camera (hot spots), magnifier (cracked
-  solder / lifted pads). e.g. "Measure 5V out with a multimeter; scope for ripple."
-- "part": any legible part marking/number, else "".
-- "confidence": 0..1.
-If you are given the module's IDENTITY and connector PINOUT, USE it: relate components to the
-real circuit (e.g. the CAN transceiver drives the HS-CAN on the connector's CAN-H/CAN-L pins;
-an output driver corresponds to a relay/solenoid control pin). Put that linkage in 'function'
-when supported by the pinout. Do NOT invent part numbers, values, pin mappings, or physics —
-only state what is visible in the photo or supported by the provided pinout.
+PCB_SYSTEM = """You are a senior electronics-repair engineer analyzing a PHOTOGRAPH of an
+automotive/industrial module PCB (ECU, BCM, TCM, cluster, etc.). Be THOROUGH: identify and box
+EVERY distinct component you can actually see — not just the big chips. Work across the whole
+board systematically (corner to corner). Components to look for:
+- ICs: microcontroller/MCU, EEPROM/Flash, CAN/LIN/FlexRay transceivers, op-amps, gate/output
+  drivers, H-bridges, voltage regulators/LDOs, switching regulator controllers, references.
+- Power semis: power MOSFETs/IGBTs/transistors (often on the heatsink), rectifier/flyback/TVS
+  diodes, Zeners.
+- Passives: electrolytic caps, ceramic/film caps, power inductors/chokes, transformers,
+  crystals/resonators, relays, fuses, shunt resistors, resistor/diode networks, optocouplers.
+- Mechanical: the harness connector(s), heatsink, test points, and any visibly cracked/
+  cold solder joints or corrosion.
+For a dense field of tiny identical passives you cannot resolve individually, box the CLUSTER
+once and label it e.g. "Passive array (0603 R/C)". Otherwise box parts individually.
 
-Return ONLY JSON: {"components":[ {label, box, function, check, part, confidence}, ... ]}.
-Localization is APPROXIMATE and that is fine. Do NOT invent components you cannot see; prefer
-fewer, higher-confidence boxes. Prioritize the components most relevant to diagnosing faults
-(power supply, MCU, comms transceivers, output drivers, bulk caps, the harness connector)."""
+READ THE MARKINGS. For each component, carefully transcribe the printed top-marking / part
+number / manufacturer logo EXACTLY as you can read it into "part" (verbatim, even if partial).
+Then USE that marking to identify the device: e.g. "TJA1050" -> NXP high-speed CAN transceiver;
+"L9822" -> ST output driver; "24C04"/"95040" -> serial EEPROM; "ATmega"/"SAK-"/"MC9S12" -> MCU.
+Put the resolved identity in "label" (e.g. "CAN transceiver (NXP TJA1050)") and explain in
+"function". If a marking is unreadable, set "part":"" and identify by package + role + location.
+
+For EACH component return:
+- "label": resolved name (include the chip family/PN in parentheses when read from the marking).
+- "box": bounding box as [ymin, xmin, ymax, xmax] — integers 0-1000 normalized to the image
+  (origin top-left; y along height, x along width). Box each part tightly around what you see.
+- "function": what it does in THIS module (tie to the circuit/pinout when given).
+- "check": what to inspect/measure and WHICH TOOL — multimeter (rails, continuity, diode),
+  oscilloscope (signals, ripple, comms), thermal camera (hot spots), magnifier (cracked solder
+  / lifted pads / corrosion). e.g. "Measure 5V out with a multimeter; scope for ripple."
+- "part": the exact legible marking/part number, else "".
+- "confidence": 0..1 — higher when read from a clear marking, lower when inferred by package.
+If given the module's IDENTITY and connector PINOUT, USE it: relate components to the real
+circuit (the CAN transceiver drives HS-CAN on the connector's CAN-H/CAN-L pins; an output
+driver corresponds to a relay/solenoid control pin). Put that linkage in 'function'.
+
+NEVER invent a part number, value, pin mapping, or physics — only state what is visibly printed
+on the board or supported by the provided pinout. An honest "" beats a guessed marking.
+Return ONLY JSON: {"components":[ {label, box, function, check, part, confidence}, ... ]}."""
 
 REPORT_SYSTEM = """You write a clear, professional repair report AND a reusable wiki procedure
 from a triage session transcript and the module's facts. Output Markdown with these sections:

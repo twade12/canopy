@@ -27,7 +27,10 @@ from canopy.vision.prompts import (
 
 def analyze_pcb(client: OllamaClient, images: list[str], context: str = "") -> dict:
     """Identify PCB components with bounding boxes (fractions 0..1) + function/check/tool."""
-    user = "Analyze this PCB photo and box the components."
+    user = ("Identify and box EVERY component you can see on this board. Read the printed part "
+            "numbers/markings on the chips and parts and use them to identify each one. Work "
+            "across the whole board corner to corner — include the small passives, diodes, and "
+            "transistors, not just the big ICs.")
     if context:
         user += f"\n\nThis module's identity and pinout (use to ground your analysis):\n{context}"
     messages = [
