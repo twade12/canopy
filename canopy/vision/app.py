@@ -10,16 +10,24 @@ import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from canopy.vision import auth, extract
 from canopy.vision import bench as benchmod
 from canopy.vision import diagram as dg
-from canopy.vision import extract
+from canopy.vision import research as researchmod
 from canopy.vision.api_reference import API_REFERENCE
 from canopy.vision.config import VisionConfig
 from canopy.vision.ollama_client import ChatMessage, OllamaClient, OllamaError
+from canopy.vision.prompts import RESEARCH_SYSTEM
 from canopy.vision.store import Store
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -54,6 +62,11 @@ class TagBody(BaseModel):
     tag: str
 
 
+class LoginBody(BaseModel):
+    password: str = ""
+    secure: bool = False
+
+
 class AssistantBody(BaseModel):
     message: str
     history: list[dict] = []
@@ -83,6 +96,11 @@ class PingBody(BaseModel):
     response_id: str = "0x7E8"
 
 
+class ResearchBody(BaseModel):
+    query: str
+    synthesize: bool = True
+
+
 def _parse_id(v: str) -> int:
     v = v.strip()
     return int(v, 16) if v.lower().startswith("0x") else int(v, 16)
@@ -108,6 +126,44 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     config.ensure_dirs()
 
     app = FastAPI(title="CANOPY Vision", docs_url="/api/docs")
+    secret = auth.load_secret(config.data_dir)
+
+    @app.middleware("http")
+    async def require_auth(request, call_next):
+        if not config.password:
+            return await call_next(request)
+        path = request.url.path
+        if path in ("/login", "/api/login", "/healthz") or path.startswith("/static"):
+            return await call_next(request)
+        if auth.valid_token(secret, request.cookies.get(auth.COOKIE)):
+            return await call_next(request)
+        if path.startswith("/api"):
+            return JSONResponse(status_code=401, content={"detail": "unauthorized"})
+        return RedirectResponse("/login")
+
+    @app.get("/healthz")
+    def healthz() -> dict:
+        return {"ok": True}
+
+    @app.get("/login")
+    def login_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "login.html")
+
+    @app.post("/api/login")
+    def login(body: LoginBody) -> JSONResponse:
+        if not config.password or auth.check_password(config.password, body.password):
+            resp = JSONResponse({"ok": True})
+            resp.set_cookie(auth.COOKIE, auth.make_token(secret), httponly=True,
+                            samesite="lax", max_age=auth.TTL, secure=body.secure)
+            return resp
+        return JSONResponse(status_code=401, content={"detail": "wrong password"})
+
+    @app.post("/api/logout")
+    def logout() -> JSONResponse:
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(auth.COOKIE)
+        return resp
+
     store = Store(config.db_path)
     client = OllamaClient(
         config.ollama_url, config.model, timeout=config.request_timeout
@@ -490,6 +546,25 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             yield f"event: done\ndata: {json.dumps({})}\n\n"
 
         return StreamingResponse(gen(), media_type="text/event-stream")
+
+    # --- deep research ---------------------------------------------------------
+    @app.post("/api/research")
+    def research(body: ResearchBody) -> dict:
+        out = researchmod.search(body.query)
+        if body.synthesize and out.get("results"):
+            srcs = "\n".join(
+                f"[{i + 1}] {r['title']} — {r['url']}\n{r['snippet'][:220]}"
+                for i, r in enumerate(out["results"])
+            )
+            try:
+                msgs = [
+                    ChatMessage("system", RESEARCH_SYSTEM),
+                    ChatMessage("user", f"Question: {body.query}\n\nSOURCES:\n{srcs}"),
+                ]
+                out["summary"] = client.chat(msgs, temperature=0.2)
+            except OllamaError:
+                out["summary"] = ""
+        return out
 
     # --- USB-to-CAN bench ------------------------------------------------------
     bench = benchmod.BenchManager()

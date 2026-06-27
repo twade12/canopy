@@ -24,9 +24,9 @@ const VIEWS = [
   { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
-  { key: 'api', label: 'API', icon: 'api' },
+  { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
 ];
-const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench']);  // usable without a selected project
+const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research']);  // usable without a project
 const meta = k => VIEWS.find(v => v.key === k) || { label: k, icon: 'diagram' };
 
 const api = {
@@ -162,7 +162,7 @@ function contentOf(v) { const g = groupOfView(state.dock, v); return g ? documen
 
 // ---------- AI activity toast ----------
 const aiToast = {
-  show(label) { const t = el('aiToast'); t.innerHTML = `<div class="tt-head">${svg('assistant')} <span>${esc(label)}</span></div><div class="tt-body" id="toastBody"></div>`; t.classList.remove('hidden'); if (this._t) clearTimeout(this._t); },
+  show(label, cancelable) { const t = el('aiToast'); t.innerHTML = `<div class="tt-head">${svg('assistant')} <span>${esc(label)}</span>${cancelable ? '<button class="tt-stop" onclick="ui.cancelStream()">Stop</button>' : ''}</div><div class="tt-body" id="toastBody"></div>`; t.classList.remove('hidden'); if (this._t) clearTimeout(this._t); },
   body(text) { const b = el('toastBody'); if (b) b.textContent = text; },
   append(text) { const b = el('toastBody'); if (b) b.textContent = (b.textContent + text).slice(-600); },
   label(text) { const h = el('aiToast').querySelector('.tt-head span'); if (h) h.textContent = text; },
@@ -176,7 +176,7 @@ function closeModal() { const b = el('modalBackdrop'); if (b) b.remove(); }
 
 function renderViewInto(view, c) {
   if (!c) return;
-  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench };
+  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch };
   if (globals[view]) return globals[view].call(ui, c);
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
   ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, memories: ui.viewMemories, record: ui.viewRecord })[view].call(ui, c);
@@ -188,8 +188,9 @@ const ui = {
     document.documentElement.dataset.theme = state.theme;
     el('sidebarToggle').innerHTML = svg('menu'); el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon');
     el('resetBtn').innerHTML = svg('reset'); el('apiBtn').innerHTML = svg('api'); el('newRecBtn').innerHTML = svg('plus'); el('searchIcon').innerHTML = svg('search');
-    el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench');
+    el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search');
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.streamCtrl) this.cancelStream(); });
     state.dock = loadDock();
     this.checkHealth(); await this.loadRecords();
     if (state.records.length) await this.select(state.records[0].id); else renderDock();
@@ -361,7 +362,7 @@ const ui = {
     box.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div></div>`);
     const aId = 'as' + Date.now(); box.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`); box.scrollTop = box.scrollHeight;
     const history = state.assistantMsgs.slice(-8); state.assistantMsgs.push({ role: 'user', content: q }); let full = '';
-    aiToast.show('Assistant thinking…');
+    aiToast.show('Assistant thinking…', true);
     await this.stream('/api/assistant/chat/stream', { message: q, history },
       tok => { full += tok; aiToast.append(tok); const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); const b = el('aMsgs'); if (b) b.scrollTop = b.scrollHeight; } },
       () => { aiToast.done('Answered'); const m = el(aId + '-md'); if (m) m.classList.remove('cursor-blink'); state.assistantMsgs.push({ role: 'assistant', content: full }); },
@@ -426,6 +427,34 @@ const ui = {
   async benchSend() {
     try { await api.send('/api/can/send', 'POST', { id: el('bFid').value, data: el('bFdata').value }); } catch (e) { alert(e.message); }
   },
+
+  // ---------- deep research ----------
+  viewResearch(c) {
+    const v = state.current;
+    const seed = v ? [v.year, v.make, v.model, v.tags && v.tags.includes('PCM') ? 'PCM' : ''].filter(Boolean).join(' ') + ' connector pinout' : '';
+    c.innerHTML = `
+      <div class="row" style="margin-bottom:10px"><input id="resQ" value="${esc(seed)}" placeholder="e.g. 2007 Silverado TCM connector harness pinout photo" style="flex:1" onkeydown="if(event.key==='Enter')ui.doResearch()"><button class="primary" id="resBtn" onclick="ui.doResearch()">${svg('search')} Search</button></div>
+      <div class="muted" style="margin-bottom:10px">Finds connector/harness photos, physical pin layouts, OBD-II pinouts and protocol references with sourced links you can triage.${v ? ' Results can be saved to <b>' + esc(v.label || 'this project') + '</b> as references.' : ''}</div>
+      <div id="resOut"></div>`;
+  },
+  async doResearch() {
+    const q = el('resQ').value.trim(); if (!q) return; const out = el('resOut');
+    await this.busy('resBtn', 'researching…', async () => {
+      const r = await api.send('/api/research', 'POST', { query: q });
+      if (r.configured === false) { out.innerHTML = `<div class="bench-section"><b>Deep research not configured.</b><div class="muted" style="margin-top:6px">${esc(r.hint)}</div></div>`; return; }
+      if (r.error) { out.innerHTML = `<p class="warn">${esc(r.error)}</p>`; return; }
+      const imgs = (r.images || []).filter(i => i.thumbnail).slice(0, 8);
+      out.innerHTML =
+        (r.summary ? `<div class="bench-section"><h4>Synthesis (provider: ${esc(r.provider)})</h4><div class="md">${md(r.summary)}</div></div>` : '') +
+        (imgs.length ? `<div class="bench-section"><h4>Images</h4><div style="display:flex;gap:8px;flex-wrap:wrap">${imgs.map(i => `<a href="${esc(i.source || i.image)}" target="_blank" title="${esc(i.title)}"><img src="${esc(i.thumbnail)}" style="height:84px;border-radius:8px;border:1px solid var(--border)"></a>`).join('')}</div></div>` : '') +
+        `<div class="bench-section"><h4>Sources</h4>${(r.results || []).map((s, i) => `<div class="api-ep"><div><b>[${i + 1}]</b> <a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a></div><div class="u">${esc(s.snippet || '')}</div>${state.current ? `<button class="ghost" style="margin-top:4px" onclick="ui.saveReference('${esc((s.title || '').replace(/'/g, ''))}','${esc(s.url)}')">Save as reference</button>` : ''}</div>`).join('') || '<p class="muted">No results.</p>'}</div>`;
+    });
+  },
+  async saveReference(title, url) {
+    if (!state.current) return;
+    await api.send(`/api/vehicles/${state.current.id}/memories`, 'POST', { content: `${title} — ${url}`, kind: 'reference' });
+    aiToast.show('Saved reference'); aiToast.hide(1600);
+  },
   async busy(id, label, fn) { const b = el(id); const old = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.innerHTML = `<span class="spinner"></span> ${label}`; } aiToast.show(label); try { const r = await fn(); aiToast.done(); return r; } catch (e) { aiToast.done('Error'); alert(e.message); } finally { if (b) { b.disabled = false; b.innerHTML = old; } } },
   async extract(all) { await this.busy(all ? 'exAllBtn' : 'exBtn', all ? `scanning ${state.pageTotal}…` : 'reading…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/extract`, 'POST', { page: state.page, all_pages: !!all }); state.current.pinouts = r.pinouts; ensureView('pinout'); rerenderView('pinout'); }); },
   async identify() { await this.busy('idBtn', 'identifying…', async () => { const v = await api.send(`/api/vehicles/${state.current.id}/identify`, 'POST', { page: state.page }); Object.assign(state.current, v); this.loadRecords(); rerenderView('record'); }); },
@@ -446,17 +475,25 @@ const ui = {
     msgs.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div></div>`);
     const aId = 'a' + Date.now(); msgs.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`); msgs.scrollTop = msgs.scrollHeight;
     state.current.messages = [...(state.current.messages || []), { role: 'user', content: q }]; let full = '';
-    aiToast.show('Thinking…');
+    aiToast.show('Thinking…', true);
     try { await this.stream(`/api/vehicles/${state.current.id}/chat/stream`, { message: q, save_memories: auto, page: state.page },
       tok => { full += tok; aiToast.append(tok); const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); const b = el('msgs'); if (b) b.scrollTop = b.scrollHeight; } },
       done => { aiToast.done('Answered'); const m = el(aId + '-md'); if (m) m.classList.remove('cursor-blink'); state.current.messages.push({ role: 'assistant', content: full }); if (done.saved_memories && done.saved_memories.length) { aiToast.show(`Saved ${done.saved_memories.length} memory(ies)`); aiToast.hide(2200); this.refreshMemories(); } },
       e => { aiToast.done('Error'); const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e)}</span>`; }); }
     catch (e) { aiToast.done('Error'); const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e.message)}</span>`; } },
-  async stream(url, body, onTok, onDone, onErr) { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!r.ok) { onErr((await r.json().catch(() => ({}))).detail || 'request failed'); return; }
-    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
-    while (true) { const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true }); const evs = buf.split('\n\n'); buf = evs.pop();
-      for (const ev of evs) { const ml = ev.match(/event: (\w+)/), dl = ev.match(/data: (.*)/s); if (!ml || !dl) continue; let data; try { data = JSON.parse(dl[1]); } catch { data = dl[1]; }
-        if (ml[1] === 'token') onTok(data); else if (ml[1] === 'done') onDone(data); else if (ml[1] === 'error') onErr(data); } } },
+  async stream(url, body, onTok, onDone, onErr) {
+    const ctrl = new AbortController(); state.streamCtrl = ctrl; let finished = false;
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal });
+      if (!r.ok) { onErr((await r.json().catch(() => ({}))).detail || 'request failed'); return; }
+      const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+      while (true) { const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true }); const evs = buf.split('\n\n'); buf = evs.pop();
+        for (const ev of evs) { const ml = ev.match(/event: (\w+)/), dl = ev.match(/data: (.*)/s); if (!ml || !dl) continue; let data; try { data = JSON.parse(dl[1]); } catch { data = dl[1]; }
+          if (ml[1] === 'token') onTok(data); else if (ml[1] === 'done') { finished = true; onDone(data); } else if (ml[1] === 'error') onErr(data); } }
+      if (!finished) onDone({});
+    } catch (e) { if (e.name === 'AbortError') onDone({ aborted: true }); else onErr(e.message || 'stream error'); }
+    finally { state.streamCtrl = null; }
+  },
+  cancelStream() { if (state.streamCtrl) { state.streamCtrl.abort(); aiToast.done('Stopped'); } },
 };
 ui.init();

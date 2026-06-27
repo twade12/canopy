@@ -1,0 +1,37 @@
+# systemd unit for CANOPY Vision (the web app).
+# Install: sudo cp deploy/canopy.service /etc/systemd/system/canopy.service
+#          sudo systemctl daemon-reload && sudo systemctl enable --now canopy
+# Edit the Environment= lines (password, model, data dir) for your install.
+
+[Unit]
+Description=CANOPY Vision (wiring-diagram + diagnostics web app)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=canopy
+Group=canopy
+WorkingDirectory=/opt/canopy
+# Persisted data: SQLite DB, uploaded diagrams, signing secret
+Environment=CANOPY_VISION_DATA=/var/lib/canopy/vision
+# REQUIRED for a public deployment — gates the app behind a password
+Environment=CANOPY_PASSWORD=change-me-please
+# Local Ollama (must be reachable from this host)
+Environment=CANOPY_OLLAMA_URL=http://127.0.0.1:11434
+Environment=CANOPY_OLLAMA_MODEL=gemma4:26b
+Environment=CANOPY_OLLAMA_EMBED_MODEL=nomic-embed-text
+# Bind to localhost only; nginx terminates TLS and proxies in.
+ExecStart=/opt/canopy/.venv/bin/uvicorn --factory canopy.vision.app:create_app \
+          --host 127.0.0.1 --port 8088 --timeout-keep-alive 75
+Restart=on-failure
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+StateDirectory=canopy
+ReadWritePaths=/var/lib/canopy
+
+[Install]
+WantedBy=multi-user.target

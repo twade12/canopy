@@ -127,6 +127,13 @@ first (tester-present / read VIN / read DTCs), then how to command/observe the f
 checks to do first. Cite specific pins/connectors/projects from the memories when relevant.
 If the needed detail isn't in the memories, say what's missing and how to capture it."""
 
+RESEARCH_SYSTEM = """You synthesize web search results for an automotive repair technician.
+Given a question and numbered SOURCES (title, url, snippet), write a concise, practical
+answer in Markdown and CITE the sources you use inline as [1], [2], etc. Focus on concrete,
+verifiable facts (connector/harness layouts, OBD-II pin functions, protocol details, parts).
+If the sources don't actually answer the question, say so. Never invent a source or a fact
+that isn't supported by the snippets. Keep it brief."""
+
 MEMORY_SUGGEST_SYSTEM = """From the conversation and diagram, extract durable, vehicle-
 specific facts worth remembering (connector locations, CAN bus topology, power/ground pins,
 module part numbers, quirks). Return ONLY JSON: {"memories": ["fact 1", "fact 2"]}. Keep

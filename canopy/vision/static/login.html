@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CANOPY · Sign in</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; }
+    .login-card { width: min(360px, 92vw); background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; box-shadow: var(--shadow); padding: 26px 24px; }
+    .login-card .brand { font-weight: 800; letter-spacing: 1px; font-size: 22px; margin-bottom: 4px; }
+    .login-card .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+    .login-card input { margin-bottom: 12px; }
+    .login-card .err { color: var(--danger); font-size: 13px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="brand">CANOPY</div>
+    <div class="sub">Universal CAN module test &amp; diagnostic station</div>
+    <input id="pw" type="password" placeholder="Password" autofocus
+           onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="primary" style="width:100%" onclick="doLogin()">Sign in</button>
+    <div class="err" id="err"></div>
+  </div>
+  <script>
+    async function doLogin() {
+      const pw = document.getElementById('pw').value;
+      const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw, secure: location.protocol === 'https:' }) });
+      if (r.ok) location.href = '/';
+      else document.getElementById('err').textContent = 'Incorrect password';
+    }
+  </script>
+</body>
+</html>

@@ -92,9 +92,11 @@ virtual bus today.**
 | [`tests/`](tests/) | 21 tests incl. a multi-frame UDS round-trip, E2E restbus, and the vision pipeline, against `vcan0` (CI falls back to an in-process `virtual` bus). |
 
 **Guides:** [docs/USAGE.md](docs/USAGE.md) — driving the stack with a real USB-CAN adapter ·
-[docs/AI-VISION.md](docs/AI-VISION.md) — the local AI wiring-diagram tool ·
-[docs/HARDWARE.md](docs/HARDWARE.md) — modular "car-in-a-box" schematics + BOM (incl. a
-one-week off-the-shelf prototype).
+[docs/AI-VISION.md](docs/AI-VISION.md) — the local AI wiring-diagram tool (now with a dockable
+VS Code-style UI, a cross-project **Assistant**, a **CAN Bench** for probing ECUs, and **deep
+research**) · [docs/DEPLOY.md](docs/DEPLOY.md) — hosting on your domain (systemd + nginx + login)
+· [docs/HARDWARE.md](docs/HARDWARE.md) — modular "car-in-a-box" schematics + BOM ·
+[docs/GAMEPLAN.md](docs/GAMEPLAN.md) — long-term roadmap to a multi-technician repair platform.
 
 **Not yet implemented** (later phases): PSU/INA228/matrix/scope drivers, power sequencing,
 module profiles + runner, vision pipeline, diagnosis engine, web UI.

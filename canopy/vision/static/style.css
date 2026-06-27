@@ -57,11 +57,15 @@ aside.sidebar.collapsed { width: 0; border: none; }
 .split { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .split.row { flex-direction: row; } .split.col { flex-direction: column; }
 .dock-kid { min-width: 0; min-height: 0; display: flex; }
-.resizer { flex: none; background: transparent; position: relative; z-index: 5; }
-.split.row > .resizer { width: 6px; cursor: col-resize; } .split.col > .resizer { height: 6px; cursor: row-resize; }
-.resizer::after { content: ""; position: absolute; inset: 0; margin: auto; background: var(--border); }
-.split.row > .resizer::after { width: 1px; height: 100%; } .split.col > .resizer::after { height: 1px; width: 100%; }
-.resizer:hover::after { background: var(--accent); }
+.resizer { flex: none; background: transparent; position: relative; z-index: 6; }
+.split.row > .resizer { width: 10px; cursor: col-resize; } .split.col > .resizer { height: 10px; cursor: row-resize; }
+.resizer::after { content: ""; position: absolute; inset: 0; margin: auto; background: var(--border); border-radius: 3px; transition: background .12s; }
+.split.row > .resizer::after { width: 2px; height: 100%; } .split.col > .resizer::after { height: 2px; width: 100%; }
+/* visible grip handle (always faint, accent on hover/drag) */
+.resizer::before { content: ""; position: absolute; inset: 0; margin: auto; background: var(--muted); opacity: .5; border-radius: 3px; }
+.split.row > .resizer::before { width: 3px; height: 26px; } .split.col > .resizer::before { height: 3px; width: 26px; }
+.resizer:hover::after, .resizer:active::after { background: var(--accent); }
+.resizer:hover::before, .resizer:active::before { background: var(--accent); opacity: 1; }
 
 .group { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin: 5px; overflow: hidden; position: relative; }
 .tabstrip { display: flex; align-items: center; gap: 2px; min-height: var(--tab-h); padding: 3px 5px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
@@ -158,6 +162,7 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 #aiToast.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
 #aiToast .tt-head { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent); }
 #aiToast .tt-head .icon { width: 15px; height: 15px; }
+#aiToast .tt-stop { margin-left: auto; font-size: 11px; padding: 2px 9px; border-radius: 999px; background: var(--danger); color: #fff; border: none; cursor: pointer; font-weight: 700; }
 #aiToast .tt-body { color: var(--muted); margin-top: 5px; max-height: 92px; overflow: hidden; line-height: 1.45;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
 
