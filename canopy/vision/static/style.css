@@ -212,3 +212,14 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .modal .opts { display: flex; flex-direction: column; gap: 7px; margin: 8px 0 2px; }
 .modal .opts label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
 .modal .opts input[type=checkbox] { width: auto; }
+
+/* inline images in chat/triage transcripts + lightbox */
+.md-img { display: block; max-width: 240px; max-height: 220px; margin-top: 8px; border-radius: 8px;
+  border: 1px solid var(--border); cursor: zoom-in; transition: filter .12s; }
+.md-img:hover { filter: brightness(1.05); }
+.modal.lightbox { width: min(900px, 95vw); padding: 12px; }
+.modal.lightbox .lb-img { display: flex; justify-content: center; background: var(--panel-2);
+  border-radius: 10px; overflow: auto; max-height: 76vh; }
+.modal.lightbox .lb-img img { max-width: 100%; max-height: 76vh; object-fit: contain; border-radius: 8px; }
+.modal.lightbox .lb-cap { display: flex; gap: 8px; margin-top: 10px; }
+.modal.lightbox .lb-cap input { flex: 1; }

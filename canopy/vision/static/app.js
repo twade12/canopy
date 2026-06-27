@@ -62,6 +62,8 @@ function md(t) {
   }
   close();
   out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) =>
+    `<img class="md-img" src="${url}" alt="${esc(alt)}" loading="lazy" title="Click to expand" onclick="ui.lightbox('${url}')">`);
   return out.replace(/\b([Pp]in|[Tt]erminal)\s*#?\s*(\d{1,3})\b/g, (m, w, n) => pinIndex()[n]
     ? `<span class="pinref" data-pin="${n}" onmouseenter="ui.pinTip(event,'${n}')" onmouseleave="ui.hideTip()" onclick="ui.gotoPinPage('${n}')">${m}</span>` : m);
 }
@@ -474,9 +476,13 @@ const ui = {
     const input = el('tIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q || !state.current) return; if (input) input.value = '';
     const box = el('tMsgs'); if (box && box.querySelector('.empty')) box.innerHTML = '';
     const img = state.triageImage; state.triageImage = null; const a = el('tAttach'); if (a) a.textContent = '';
-    box.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div>${img ? `<img src="${img}" style="max-width:170px;border-radius:8px;margin-top:6px;display:block">` : ''}</div>`);
+    // Keep the photo in the message content so it survives tab moves; the server re-embeds it
+    // as a saved-attachment URL on reload. Strip image markdown from history sent to the model.
+    const userContent = q + (img ? `\n\n![photo](${img})` : '');
+    box.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(userContent)}</div></div>`);
     const aId = 't' + Date.now(); box.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`); box.scrollTop = box.scrollHeight;
-    const history = (state.triageMsgs || []).slice(-8); state.triageMsgs = [...(state.triageMsgs || []), { role: 'user', content: q }]; let full = '';
+    const history = (state.triageMsgs || []).slice(-8).map(m => ({ role: m.role, content: m.content.replace(/!\[[^\]]*\]\([^)]*\)/g, '[photo]') }));
+    state.triageMsgs = [...(state.triageMsgs || []), { role: 'user', content: userContent }]; let full = '';
     aiToast.show('Triaging…', true);
     await this.stream(`/api/vehicles/${state.current.id}/triage/stream`, { message: q, image: img || '', history },
       tok => { full += tok; aiToast.append(tok); const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); const b = el('tMsgs'); if (b) b.scrollTop = b.scrollHeight; } },
@@ -571,6 +577,21 @@ const ui = {
         const res = await api.send(`/api/vehicles/${state.current.id}/pcb`, 'POST', { image: r.result });
         state.pcbComponents = res.components || []; rerenderView('pcb'); aiToast.done(`${state.pcbComponents.length} components`); });
     }; r.readAsDataURL(file);
+  },
+  async lightbox(src) {
+    const m = document.createElement('div'); m.className = 'modal lightbox';
+    const att = (src.match(/\/api\/attachment\/(\d+)\/image/) || [])[1];
+    m.innerHTML = `<div class="lb-img"><img src="${src}" alt=""></div>
+      ${att ? `<div class="lb-cap"><input id="lbCap" placeholder="Add a caption / annotation for the wiki…">
+        <button class="primary" id="lbSave" onclick="ui.saveCaption(${att})">Save</button></div>` : ''}
+      <div class="m-foot"><button onclick="closeModal()">Close</button></div>`;
+    showModal(m);
+    if (att) { try { const a = await api.get(`/api/attachment/${att}`); const i = el('lbCap'); if (i) i.value = a.note || ''; } catch {} }
+  },
+  async saveCaption(att) {
+    const i = el('lbCap'); if (!i) return; const btn = el('lbSave'); if (btn) btn.textContent = 'Saving…';
+    try { await api.send(`/api/attachment/${att}`, 'PATCH', { note: i.value.trim() }); if (btn) btn.textContent = 'Saved'; aiToast.done('Caption saved'); }
+    catch (e) { if (btn) btn.textContent = 'Save'; alert(e.message); }
   },
   selectPcb(i) { state.pcbSel = state.pcbSel === i ? null : i; rerenderView('pcb'); },
   pcbZoom(dir) { state.pcbZoom = dir === 0 ? 1 : Math.max(0.5, Math.min(5, (state.pcbZoom || 1) + dir * 0.25));

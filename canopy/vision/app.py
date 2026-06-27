@@ -121,6 +121,10 @@ class PcbComponentUpdate(BaseModel):
     part: str | None = None
 
 
+class AttachmentUpdate(BaseModel):
+    note: str = ""  # caption / annotation for the image (for the wiki)
+
+
 def _parse_id(v: str) -> int:
     v = v.strip()
     return int(v, 16) if v.lower().startswith("0x") else int(v, 16)
@@ -606,8 +610,10 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             try:
                 path = config.uploads_dir / f"v{vehicle_id}_triage_{int(time.time() * 1000)}.png"
                 path.write_bytes(base64.b64decode(b64))
-                store.add_attachment(vehicle_id, str(path), kind="photo", note=body.message[:200])
-                note = f"{body.message} [photo attached]"
+                att = store.add_attachment(
+                    vehicle_id, str(path), kind="photo", note=body.message[:200])
+                # Embed the saved image so the transcript keeps the photo across reloads.
+                note = f"{body.message}\n\n![photo](/api/attachment/{att['id']}/image)".strip()
             except (ValueError, OSError):
                 pass
         store.add_message(vehicle_id, "user", note, channel="triage")
@@ -698,11 +704,24 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     @app.get("/api/attachment/{attachment_id}/image")
     def attachment_image(attachment_id: int) -> Response:
-        row = next((a for v in store.list_vehicles()
-                    for a in store.list_attachments(v["id"]) if a["id"] == attachment_id), None)
+        row = store.get_attachment(attachment_id)
         if not row or not Path(row["path"]).exists():
             raise HTTPException(404, "not found")
         return Response(content=Path(row["path"]).read_bytes(), media_type="image/png")
+
+    @app.get("/api/attachment/{attachment_id}")
+    def attachment_meta(attachment_id: int) -> dict:
+        row = store.get_attachment(attachment_id)
+        if not row:
+            raise HTTPException(404, "not found")
+        return {"id": row["id"], "kind": row["kind"], "note": row["note"] or ""}
+
+    @app.patch("/api/attachment/{attachment_id}")
+    def attachment_update(attachment_id: int, body: AttachmentUpdate) -> dict:
+        row = store.update_attachment(attachment_id, note=body.note)
+        if not row:
+            raise HTTPException(404, "not found")
+        return {"id": row["id"], "kind": row["kind"], "note": row["note"] or ""}
 
     # --- phone pairing (snap board photos straight into a project) -------------
     @app.get("/api/vehicles/{vehicle_id}/pair")

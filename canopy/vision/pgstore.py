@@ -300,6 +300,13 @@ class PgStore:
         return self._all(
             "SELECT * FROM attachment WHERE vehicle_id = %s ORDER BY id DESC", (vehicle_id,))
 
+    def get_attachment(self, attachment_id: int) -> dict | None:
+        return self._one("SELECT * FROM attachment WHERE id = %s", (attachment_id,))
+
+    def update_attachment(self, attachment_id: int, *, note: str) -> dict | None:
+        return self._one(
+            "UPDATE attachment SET note = %s WHERE id = %s RETURNING *", (note, attachment_id))
+
     # --- PCB components (boxed parts + user corrections) ---
     @staticmethod
     def _pcb_row(row: dict) -> dict:

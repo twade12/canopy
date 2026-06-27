@@ -363,6 +363,18 @@ class Store:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_attachment(self, attachment_id: int) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM attachment WHERE id = ?", (attachment_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def update_attachment(self, attachment_id: int, *, note: str) -> dict | None:
+        self._conn.execute(
+            "UPDATE attachment SET note = ? WHERE id = ?", (note, attachment_id))
+        self._conn.commit()
+        return self.get_attachment(attachment_id)
+
     # --- PCB components (boxed parts + user corrections) ---
     @staticmethod
     def _pcb_row(row: sqlite3.Row) -> dict:
