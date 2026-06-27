@@ -50,7 +50,9 @@ the content of the internal repair wiki — so the system gets smarter with ever
   Abstraction Layer; module behavior lives in YAML profiles. Adding a module = adding a
   profile (+ a cheap adapter harness). Swapping a CANable for a Kvaser is a config change.
 
-See [CLAUDE.md](CLAUDE.md) for the full architecture, data model, and roadmap.
+See [CLAUDE.md](CLAUDE.md) for the full architecture and data model,
+[docs/ARCHITECTURE-NOTES.md](docs/ARCHITECTURE-NOTES.md) for the universal-interface/PCB and
+full-car-simulator design, and [docs/BATTLE-PLAN.md](docs/BATTLE-PLAN.md) for the build-out plan.
 
 ---
 
