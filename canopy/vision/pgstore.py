@@ -12,6 +12,7 @@ Embeddings are stored in a real ``vector`` column; today retrieval still happens
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import psycopg
@@ -61,6 +62,12 @@ CREATE TABLE IF NOT EXISTS attachment (
     id SERIAL PRIMARY KEY,
     vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
     path TEXT NOT NULL, kind TEXT DEFAULT 'photo', note TEXT, created_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pcb_component (
+    id SERIAL PRIMARY KEY,
+    vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
+    attachment_id INTEGER, label TEXT, box TEXT, function TEXT, chk TEXT, part TEXT,
+    confidence REAL, user_label TEXT, user_note TEXT, created_at TIMESTAMPTZ NOT NULL
 );
 """
 
@@ -292,3 +299,48 @@ class PgStore:
     def list_attachments(self, vehicle_id: int) -> list[dict]:
         return self._all(
             "SELECT * FROM attachment WHERE vehicle_id = %s ORDER BY id DESC", (vehicle_id,))
+
+    # --- PCB components (boxed parts + user corrections) ---
+    @staticmethod
+    def _pcb_row(row: dict) -> dict:
+        d = dict(row)
+        d["box"] = json.loads(d["box"]) if d.get("box") else []
+        d["check"] = d.pop("chk", "") or ""
+        return d
+
+    def replace_pcb_components(
+        self, vehicle_id: int, attachment_id: int | None, comps: list[dict]
+    ) -> list[dict]:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM pcb_component WHERE vehicle_id = %s", (vehicle_id,))
+            for c in comps:
+                cur.execute(
+                    "INSERT INTO pcb_component (vehicle_id, attachment_id, label, box, function,"
+                    " chk, part, confidence, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (vehicle_id, attachment_id, c.get("label", ""), json.dumps(c.get("box", [])),
+                     c.get("function", ""), c.get("check", ""), c.get("part", ""),
+                     float(c.get("confidence", 0) or 0), _now()),
+                )
+        return self.list_pcb_components(vehicle_id)
+
+    def list_pcb_components(self, vehicle_id: int) -> list[dict]:
+        rows = self._all(
+            "SELECT * FROM pcb_component WHERE vehicle_id = %s ORDER BY id", (vehicle_id,))
+        return [self._pcb_row(r) for r in rows]
+
+    def latest_pcb_attachment(self, vehicle_id: int) -> int | None:
+        row = self._one(
+            "SELECT attachment_id FROM pcb_component WHERE vehicle_id = %s"
+            " ORDER BY id DESC LIMIT 1", (vehicle_id,))
+        return row["attachment_id"] if row else None
+
+    def update_pcb_component(self, comp_id: int, **fields) -> dict | None:
+        allowed = {"user_label", "user_note", "label", "part"}
+        sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if sets:
+            cols = ", ".join(f"{k} = %s" for k in sets)
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE pcb_component SET {cols} WHERE id = %s", (*sets.values(), comp_id))
+        row = self._one("SELECT * FROM pcb_component WHERE id = %s", (comp_id,))
+        return self._pcb_row(row) if row else None

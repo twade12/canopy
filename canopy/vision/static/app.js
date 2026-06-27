@@ -230,7 +230,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = 1; this.renderRecords(); renderDock(); },
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = 1; state.pcbEdit = null; this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
   viewDiagram(c) {
@@ -495,7 +495,10 @@ const ui = {
 
   // ---------- PCB photo analysis (boxed components) ----------
   viewPcb(c) {
-    if (!state.pcbComponents) {
+    if (state.pcbComponents == null) {  // not loaded yet — fetch the saved analysis
+      c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.loadPcb(); return;
+    }
+    if (!state.pcbComponents.length || !state.pcbImage) {
       c.innerHTML = `<div id="pcbDz" class="dropzone">${svg('chip')}<div style="margin-top:8px"><strong>Drop a PCB photo</strong> (the ECU/module board), or click.</div><div class="muted" style="margin-top:4px">CANOPY boxes the components it recognizes and tells you what to check on each.</div></div>
         <div class="row" style="margin-top:10px;justify-content:center"><button onclick="ui.phoneModal()">${svg('phone')} Pair phone to snap a photo</button></div>`;
       const dz = c.querySelector('#pcbDz'); if (dz) { dz.onclick = () => this.pcbPick();
@@ -503,10 +506,22 @@ const ui = {
       return;
     }
     const comps = state.pcbComponents;
+    const nm = p => esc(p.user_label || p.label);
     const sel = state.pcbSel != null ? comps[state.pcbSel] : null;
     const boxes = comps.map((p, i) => { const [x0, y0, x1, y1] = p.box; const on = i === state.pcbSel;
-      return `<div class="pcb-box ${on ? 'sel' : 'dim'}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})">${on ? `<span class="lbl">${esc(p.label)}</span>` : ''}</div>`; }).join('');
+      return `<div class="pcb-box ${on ? 'sel' : 'dim'}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})">${on ? `<span class="lbl">${nm(p)}</span>` : ''}</div>`; }).join('');
     const z = state.pcbZoom || 1;
+    let detail;
+    if (!sel) detail = '<div class="pcb-detail muted" style="font-size:12px">Select a component to see its function, what to check, correct the AI, and send it to Triage.</div>';
+    else if (state.pcbEdit === sel.id) detail = `<div class="pcb-detail"><div class="muted" style="font-size:11px;margin-bottom:4px">Correct the AI — your record for diagnosis &amp; replacement</div>
+        <input id="pcEdLabel" placeholder="Component name" value="${esc(sel.user_label || sel.label)}">
+        <input id="pcEdPart" placeholder="Part number / spec (e.g. TJA1050, 28F400)" value="${esc(sel.part || '')}" style="margin-top:6px">
+        <textarea id="pcEdNote" placeholder="Spec, correction, or observation for the record…" style="margin-top:6px;min-height:54px">${esc(sel.user_note || '')}</textarea>
+        <div class="row" style="margin-top:6px"><button class="primary" onclick="ui.pcbSaveEdit(${sel.id})">Save</button><button onclick="ui.pcbEditToggle(null)">Cancel</button></div></div>`;
+    else detail = `<div class="pcb-detail"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:14px">${nm(sel)}</b>${sel.user_label ? '<span class="tagchip" title="corrected by tech">edited</span>' : ''}${sel.part ? `<span class="tagchip">${esc(sel.part)}</span>` : ''}<span style="margin-left:auto;color:var(--muted);font-size:11px">conf ${Math.round(sel.confidence * 100)}%</span></div>
+        <div style="margin:6px 0;font-size:13px">${esc(sel.function)}</div><div class="warn" style="color:var(--cyan)">Check: ${esc(sel.check)}</div>
+        ${sel.user_note ? `<div style="margin-top:6px;font-size:12.5px"><b>Note:</b> ${esc(sel.user_note)}</div>` : ''}
+        <div class="row" style="margin-top:8px"><button onclick="ui.pcbEditToggle(${sel.id})">${svg('edit')} Edit / correct</button><button class="primary" style="flex:1" onclick="ui.pcbToTriage(${state.pcbSel})">${svg('triage')} Send to Triage</button></div></div>`;
     c.innerHTML = `<div class="pcb-col">
       <div class="row" style="margin-bottom:8px"><button onclick="ui.pcbPick()">${svg('upload')} New photo</button><button onclick="ui.phoneModal()">${svg('phone')} Pair phone</button><button onclick="ui.exportPcb()">${svg('chip')} Save annotated PNG</button>
         <div class="zoomctl"><button class="iconbtn" onclick="ui.pcbZoom(-1)">${svg('zout')}</button><span id="pcbZlbl">${Math.round(z * 100)}%</span><button class="iconbtn" onclick="ui.pcbZoom(1)">${svg('zin')}</button><button class="iconbtn" title="Fit height" onclick="ui.pcbZoom(0)">${svg('reset')}</button></div></div>
@@ -514,12 +529,26 @@ const ui = {
         <div class="pcb-stage"><div class="pcb-wrap" style="height:${z * 100}%"><img src="${state.pcbImage}" alt="PCB"><div style="position:absolute;inset:0">${boxes}</div></div></div>
         <div class="pcb-side">
           <div class="muted" style="font-size:11px;margin-bottom:6px">${comps.length} components — click one to highlight it on the board</div>
-          <div class="pcb-list">${comps.map((p, i) => `<div class="pcb-item ${i === state.pcbSel ? 'sel' : ''}" onclick="ui.selectPcb(${i})"><div class="pi-top"><span class="pi-label">${esc(p.label)}</span><span class="pi-conf">${Math.round(p.confidence * 100)}%</span></div><div class="pi-detail">${esc(p.check)}</div></div>`).join('')}</div>
-          ${sel ? `<div class="pcb-detail"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:14px">${esc(sel.label)}</b>${sel.part ? `<span class="tagchip">${esc(sel.part)}</span>` : ''}<span style="margin-left:auto;color:var(--muted);font-size:11px">conf ${Math.round(sel.confidence * 100)}%</span></div>
-            <div style="margin:6px 0;font-size:13px">${esc(sel.function)}</div><div class="warn" style="color:var(--cyan)">Check: ${esc(sel.check)}</div>
-            <button class="primary" style="margin-top:8px;width:100%" onclick="ui.pcbToTriage(${state.pcbSel})">${svg('triage')} Send to Triage</button></div>` : '<div class="pcb-detail muted" style="font-size:12px">Select a component to see its function, what to check, and send it to Triage.</div>'}
+          <div class="pcb-list">${comps.map((p, i) => `<div class="pcb-item ${i === state.pcbSel ? 'sel' : ''}" onclick="ui.selectPcb(${i})"><div class="pi-top"><span class="pi-label">${nm(p)}${p.user_label ? ' ·' : ''}</span><span class="pi-conf">${Math.round(p.confidence * 100)}%</span></div><div class="pi-detail">${esc(p.check)}</div></div>`).join('')}</div>
+          ${detail}
         </div>
       </div></div>`;
+  },
+  async loadPcb() {
+    try { const r = await api.get(`/api/vehicles/${state.current.id}/pcb-components`);
+      if (r.components && r.components.length) { state.pcbComponents = r.components;
+        if (!state.pcbImage && r.attachment_id) state.pcbImage = `/api/attachment/${r.attachment_id}/image`;
+      } else state.pcbComponents = [];
+    } catch { state.pcbComponents = []; }
+    rerenderView('pcb');
+  },
+  pcbEditToggle(id) { state.pcbEdit = id; rerenderView('pcb'); },
+  async pcbSaveEdit(id) {
+    const body = { user_label: el('pcEdLabel').value.trim(), part: el('pcEdPart').value.trim(), user_note: el('pcEdNote').value.trim() };
+    try { const upd = await api.send(`/api/pcb-component/${id}`, 'PATCH', body);
+      const i = state.pcbComponents.findIndex(c => c.id === id); if (i >= 0) state.pcbComponents[i] = upd;
+      state.pcbEdit = null; rerenderView('pcb'); aiToast.done('Correction saved');
+    } catch (e) { alert(e.message); }
   },
   async exportPcb() {
     if (!state.pcbImage) return; aiToast.show('Rendering annotated image…');
@@ -530,14 +559,14 @@ const ui = {
       const lw = Math.max(2, cv.width / 450); const fs = Math.max(13, cv.width / 75); ctx.font = `bold ${fs}px sans-serif`; ctx.textBaseline = 'bottom';
       (state.pcbComponents || []).forEach((p, i) => { const [x0, y0, x1, y1] = p.box; const x = x0 * cv.width, y = y0 * cv.height, w = (x1 - x0) * cv.width, h = (y1 - y0) * cv.height;
         const on = i === state.pcbSel; ctx.lineWidth = on ? lw * 1.6 : lw; ctx.strokeStyle = on ? '#0f9d6b' : '#0e8aa6';
-        ctx.strokeRect(x, y, w, h); const tw = ctx.measureText(p.label).width; ctx.fillStyle = on ? '#0f9d6b' : '#0e8aa6'; ctx.fillRect(x, y - fs - 4, tw + 10, fs + 4); ctx.fillStyle = '#fff'; ctx.fillText(p.label, x + 5, y - 2); });
+        ctx.strokeRect(x, y, w, h); const nm = p.user_label || p.label; const tw = ctx.measureText(nm).width; ctx.fillStyle = on ? '#0f9d6b' : '#0e8aa6'; ctx.fillRect(x, y - fs - 4, tw + 10, fs + 4); ctx.fillStyle = '#fff'; ctx.fillText(nm, x + 5, y - 2); });
       const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = `${(state.current.label || 'pcb').replace(/[^\w.-]/g, '_')}_annotated.png`; a.click();
       aiToast.done('Saved annotated PNG');
     } catch (e) { aiToast.done('Error'); alert(e.message); }
   },
   pcbPick() { if (!state.pcbFileInput) { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.onchange = e => { if (e.target.files[0]) this.pcbUpload(e.target.files[0]); }; state.pcbFileInput = inp; } state.pcbFileInput.value = ''; state.pcbFileInput.click(); },
   async pcbUpload(file) {
-    const r = new FileReader(); r.onload = async () => { state.pcbImage = r.result; state.pcbSel = null; state.pcbZoom = 1;
+    const r = new FileReader(); r.onload = async () => { state.pcbImage = r.result; state.pcbSel = null; state.pcbZoom = 1; state.pcbEdit = null;
       await this.busy(null, 'analyzing board…', async () => { aiToast.show('Analyzing PCB…');
         const res = await api.send(`/api/vehicles/${state.current.id}/pcb`, 'POST', { image: r.result });
         state.pcbComponents = res.components || []; rerenderView('pcb'); aiToast.done(`${state.pcbComponents.length} components`); });
@@ -548,7 +577,7 @@ const ui = {
     const w = document.querySelector('.pcb-wrap'); if (w) w.style.height = (state.pcbZoom * 100) + '%';
     const l = el('pcbZlbl'); if (l) l.textContent = Math.round(state.pcbZoom * 100) + '%'; },
   pcbToTriage(i) { state.triageImage = state.pcbImage; ensureView('triage'); const sel = i != null ? state.pcbComponents[i] : null;
-    const txt = sel ? `About the ${sel.label} on this board: ` : 'Here is the ECU board photo. The symptom is: ';
+    const txt = sel ? `About the ${sel.user_label || sel.label} on this board: ` : 'Here is the ECU board photo. The symptom is: ';
     const inp = el('tIn'); if (inp) { inp.value = txt; inp.focus(); } const a = el('tAttach'); if (a) a.textContent = 'board photo attached — sends with your next message'; },
 
   // ---------- phone pairing ----------

@@ -114,6 +114,13 @@ class PcbBody(BaseModel):
     note: str = ""
 
 
+class PcbComponentUpdate(BaseModel):
+    user_label: str | None = None  # tech's corrected name for the part
+    user_note: str | None = None   # spec / correction / observation for the record
+    label: str | None = None
+    part: str | None = None
+
+
 def _parse_id(v: str) -> int:
     v = v.strip()
     return int(v, 16) if v.lower().startswith("0x") else int(v, 16)
@@ -625,11 +632,13 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def pcb_analyze(vehicle_id: int, body: PcbBody) -> dict:
         b64 = _decode_b64_image(body.image)
         small_b64 = b64
+        attachment_id: int | None = None
         try:
             raw = base64.b64decode(b64)
             path = config.uploads_dir / f"v{vehicle_id}_pcb_{int(time.time() * 1000)}.png"
             path.write_bytes(raw)
-            store.add_attachment(vehicle_id, str(path), kind="pcb", note=body.note[:200])
+            att = store.add_attachment(vehicle_id, str(path), kind="pcb", note=body.note[:200])
+            attachment_id = att["id"]
             small_b64 = base64.b64encode(dg._downscale_png(raw)).decode()  # speed up inference
         except (ValueError, OSError):
             pass
@@ -641,12 +650,29 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             result = extract.analyze_pcb(client, [small_b64], ctx)
         except OllamaError as e:
             raise HTTPException(503, str(e)) from e
-        if result["components"]:
+        # Persist the boxed parts so they survive reloads and can be corrected by the tech.
+        stored = store.replace_pcb_components(vehicle_id, attachment_id, result["components"])
+        if stored:
             summary = "PCB components identified: " + ", ".join(
-                c["label"] for c in result["components"][:12] if c["label"]
+                c["label"] for c in stored[:12] if c["label"]
             )
             save_memory_if_novel(vehicle_id, summary, "pcb")  # retain for cross-module recall
-        return result
+        return {"components": stored, "attachment_id": attachment_id}
+
+    @app.get("/api/vehicles/{vehicle_id}/pcb-components")
+    def pcb_components(vehicle_id: int) -> dict:
+        comps = store.list_pcb_components(vehicle_id)
+        return {"components": comps, "attachment_id": store.latest_pcb_attachment(vehicle_id)}
+
+    @app.patch("/api/pcb-component/{comp_id}")
+    def pcb_component_update(comp_id: int, body: PcbComponentUpdate) -> dict:
+        row = store.update_pcb_component(
+            comp_id, user_label=body.user_label, user_note=body.user_note,
+            label=body.label, part=body.part,
+        )
+        if row is None:
+            raise HTTPException(404, "component not found")
+        return row
 
     @app.post("/api/vehicles/{vehicle_id}/report")
     def repair_report(vehicle_id: int) -> dict:
