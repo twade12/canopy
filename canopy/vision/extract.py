@@ -132,6 +132,43 @@ def chat_about_diagram(
     return client.chat(messages, temperature=0.3)
 
 
+def chat_about_diagram_stream(
+    client: OllamaClient,
+    question: str,
+    *,
+    context: str,
+    history: list[ChatMessage],
+    images: list[str],
+):
+    """Stream a chat answer token-by-token (for live 'thinking' in the UI)."""
+    messages: list[ChatMessage] = [ChatMessage("system", CHAT_SYSTEM + "\n\n" + context)]
+    messages.extend(history)
+    messages.append(ChatMessage("user", question, images=images))
+    yield from client.chat_stream(messages, temperature=0.3)
+
+
+def dedup_memories(
+    candidates: list[str], existing: list[str], *, threshold: float = 0.72
+) -> list[str]:
+    """Keep only candidates that are salient and not too similar to existing/each other."""
+    import difflib
+
+    def similar(a: str, b: str) -> float:
+        return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+    kept: list[str] = []
+    pool = list(existing)
+    for c in candidates:
+        c = c.strip()
+        if len(c) < 12:  # too trivial to be salient
+            continue
+        if any(similar(c, e) >= threshold for e in pool):
+            continue
+        kept.append(c)
+        pool.append(c)
+    return kept
+
+
 def suggest_memories(client: OllamaClient, transcript: str) -> list[str]:
     """Propose durable vehicle facts worth saving from a transcript."""
     messages = [

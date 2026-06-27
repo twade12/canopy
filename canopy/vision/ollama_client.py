@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 
@@ -76,3 +77,31 @@ class OllamaClient:
             payload["format"] = "json"
         result = self._post("/api/chat", payload)
         return result.get("message", {}).get("content", "")
+
+    def chat_stream(
+        self, messages: list[ChatMessage], *, temperature: float = 0.3, model: str | None = None
+    ) -> Iterator[str]:
+        """Yield assistant text chunks as they are generated (Ollama streaming)."""
+        payload = {
+            "model": model or self.model,
+            "messages": [m.to_dict() for m in messages],
+            "stream": True,
+            "options": {"temperature": temperature},
+        }
+        url = f"{self.base_url}/api/chat"
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                for raw in resp:
+                    line = raw.decode("utf-8").strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    chunk = obj.get("message", {}).get("content", "")
+                    if chunk:
+                        yield chunk
+                    if obj.get("done"):
+                        break
+        except urllib.error.URLError as exc:
+            raise OllamaError(f"Ollama stream to {url} failed: {exc}") from exc

@@ -50,6 +50,9 @@ Rules:
 - 'circuit' = the circuit id from the wire code (e.g. "VDB04"); 'wire_color' = its color
   (e.g. "WH/bu" for white/blue). 'connects_to' = the component/system the wire goes to.
 - Keep pin numbers as strings. Include ALL pins visible on the page.
+- Connector labels may appear with or without a leading 'C' (e.g. "1232b" and "C1232B"
+  are the SAME connector). ALWAYS output the canonical form: a leading 'C' + uppercase
+  (so both become "C1232B").
 
 """
     + SIGNAL_GLOSSARY

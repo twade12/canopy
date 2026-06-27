@@ -107,6 +107,16 @@ copy the SQLite file.
 
 ---
 
+## Interface
+
+The UI is a **VS Code-style workspace**: a collapsible left sidebar of records, and a main
+area split into panels, each with its own tabs (Diagram · Pinout · Wiring Plan · Chat ·
+Memories · Record). Put the **Diagram** beside the **Pinout** (or Chat), or **split** the
+right panel to see two at once — no more scrolling to compare. Click a pin to jump the
+diagram to that pin's page and see its detail. Pin numbers mentioned in the wiring plan and
+chat are **hover-able** (function + page). Toggle a **light/dark theme**. Chat answers
+**stream in real time**, and new, non-duplicate facts can be **auto-saved to memory**.
+
 ## Notes & limitations
 
 - **Verify before you energize.** Vision parses can be wrong. Every CAN plan and answer

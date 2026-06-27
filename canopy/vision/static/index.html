@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,120 +8,44 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="logo">
-      <svg class="leaf" viewBox="0 0 100 100" aria-hidden="true">
-        <circle cx="50" cy="42" r="26" fill="#10b981"/>
-        <circle cx="32" cy="52" r="17" fill="#34d399"/>
-        <circle cx="68" cy="52" r="17" fill="#34d399"/>
-        <circle cx="50" cy="30" r="15" fill="#7cf0bc"/>
-        <rect x="46" y="60" width="8" height="30" rx="4" fill="#5a4632"/>
+    <button class="iconbtn" id="sidebarToggle" title="Toggle sidebar" onclick="ui.toggleSidebar()"></button>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M40 8 L57 16 L46 27 Z" fill="#f3b95f" stroke="#d99b45" stroke-width="1.5"/>
+        <path d="M52 13 L46 27" stroke="#c77b36" stroke-width="4" stroke-linecap="round"/>
+        <rect x="14" y="26" width="28" height="28" fill="#2e8b6f"/>
+        <rect x="14" y="36" width="28" height="13" fill="#0e3a2b"/>
+        <ellipse cx="28" cy="26" rx="14" ry="4.5" fill="#6fe0b4"/>
+        <ellipse cx="28" cy="26" rx="11" ry="3" fill="#0d2c20"/>
       </svg>
-      <span class="wordmark">CANOPY</span>
-      <span class="sub">VISION</span>
+      <span class="name">CANOPY</span><span class="pun">Can&nbsp;’o&nbsp;Pie</span>
     </div>
-    <div class="status-pill"><span id="statusDot" class="dot"></span><span id="statusText">checking model…</span></div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="splitToggle" title="Split / unsplit right panel" onclick="ui.toggleSplit()"></button>
+    <button class="iconbtn" id="diagToggle" title="Show/hide diagram panel" onclick="ui.toggleDiagram()"></button>
+    <button class="iconbtn" id="themeToggle" title="Toggle theme" onclick="ui.toggleTheme()"></button>
+    <div class="status-pill"><span id="statusDot" class="dot"></span><span id="statusText">…</span></div>
   </header>
 
   <div class="app">
-    <aside class="sidebar">
-      <h2>Vehicles</h2>
-      <button class="primary" style="width:100%;margin-bottom:14px" onclick="ui.newVehicle()">+ New vehicle</button>
-      <div id="vehicleList"></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="head"><h2>Modules / Vehicles</h2>
+        <button class="iconbtn" title="New record" onclick="ui.newRecord()" id="newRecBtn"></button>
+      </div>
+      <div class="list" id="recordList"></div>
     </aside>
 
-    <main class="content">
-      <div id="emptyState" class="empty">
-        <p>Select or create a vehicle to begin.</p>
-        <p class="muted">Upload a wiring diagram, extract its pinout, and ask the local AI how to wire it for CAN.</p>
+    <div class="workspace" id="workspace">
+      <div class="slot" id="slot-left"></div>
+      <div class="col-right">
+        <div class="slot" id="slot-rightTop"></div>
+        <div class="slot hidden" id="slot-rightBottom"></div>
       </div>
-
-      <div id="workspace" class="hidden">
-        <!-- vehicle identity -->
-        <div class="card">
-          <h3>🚗 <span id="vehTitle">Vehicle</span></h3>
-          <div class="row">
-            <label class="field" style="flex:2"><span>VIN</span><input id="vin" placeholder="17-char VIN"></label>
-            <label class="field"><span>Year</span><input id="year" placeholder="2016"></label>
-            <label class="field"><span>Make</span><input id="make" placeholder="Ford"></label>
-            <label class="field"><span>Model</span><input id="model" placeholder="F-250 6.7L"></label>
-          </div>
-          <div class="row">
-            <button class="primary" onclick="ui.saveVehicle()">Save</button>
-            <button onclick="ui.identify()" id="identifyBtn">Identify from diagram</button>
-            <button class="ghost danger" onclick="ui.deleteVehicle()">Delete</button>
-          </div>
-        </div>
-
-        <div class="grid2">
-          <!-- diagram -->
-          <div class="card">
-            <h3>📐 Wiring diagram</h3>
-            <div id="dropzone" class="dropzone">
-              <strong>Drop</strong> an image or PDF here, or click to choose.<br>
-              <span class="muted">PNG · JPG · PDF (multi-page supported)</span>
-            </div>
-            <input id="fileInput" type="file" accept="image/*,application/pdf" class="hidden">
-            <div id="pageNav" class="pagenav hidden">
-              <button class="ghost" onclick="ui.pageStep(-1)">◀</button>
-              <span>Page <input id="pageNum" type="number" min="1" value="1" onchange="ui.gotoPage(this.value-1)"> / <span id="pageTotal">1</span></span>
-              <button class="ghost" onclick="ui.pageStep(1)">▶</button>
-            </div>
-            <div id="diagramPreview" class="diagram-preview" style="margin-top:14px"></div>
-            <div class="row" style="margin-top:14px">
-              <button class="primary" onclick="ui.extract(false)" id="extractBtn" disabled>Extract this page</button>
-              <button onclick="ui.extract(true)" id="extractAllBtn" disabled>Extract all pages</button>
-              <button onclick="ui.canPlan()" id="canPlanBtn" disabled>CAN wiring plan</button>
-            </div>
-            <p class="muted" style="margin-top:8px">Tip: navigate to the page showing the connector you want, then “Extract this page”. “Extract all” scans the whole document (slower).</p>
-          </div>
-
-          <!-- pinout -->
-          <div class="card">
-            <h3>🔌 Pinout <span id="connectorName" class="muted"></span></h3>
-            <div id="pinDetail" class="pin-detail hidden"></div>
-            <div id="pinoutTable"><p class="muted">No pinout yet. Upload a diagram and extract a page. Then click any pin to see its function.</p></div>
-          </div>
-        </div>
-
-        <!-- can plan output -->
-        <div id="planCard" class="card hidden">
-          <h3>🧭 CAN bench wiring plan</h3>
-          <div id="planOutput" class="md"></div>
-          <p class="warn">⚠ Verify power &amp; ground pins by hand and set the PSU current limit before energizing. AI parses can be wrong.</p>
-        </div>
-
-        <!-- chat -->
-        <div class="card">
-          <h3>💬 Ask about this vehicle</h3>
-          <div class="chips">
-            <span class="chip" onclick="ui.ask('How do I wire this module to communicate over CAN?')">How to wire for CAN?</span>
-            <span class="chip" onclick="ui.ask('How can I simulate a test on the A/C clutch relay in this vehicle?')">Simulate A/C clutch relay</span>
-            <span class="chip" onclick="ui.ask('Which pins are power, ground, CAN-H and CAN-L?')">Power / GND / CAN pins</span>
-            <span class="chip" onclick="ui.ask('What modules are on the CAN bus and how are they connected?')">CAN bus topology</span>
-          </div>
-          <div class="chat">
-            <div id="messages" class="messages"></div>
-            <div class="chat-input">
-              <textarea id="chatInput" placeholder="Ask a question about the wiring diagram…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ui.send();}"></textarea>
-              <button class="primary" id="sendBtn" onclick="ui.send()">Send</button>
-            </div>
-            <label class="toggle"><input type="checkbox" id="saveMem" style="width:auto"> Save learned facts to memory after each answer</label>
-          </div>
-        </div>
-
-        <!-- memories -->
-        <div class="card">
-          <h3>🧠 Memories <span class="muted">— saved knowledge for this vehicle</span></h3>
-          <div class="chat-input" style="margin-bottom:12px">
-            <input id="memInput" placeholder="Add a fact to remember about this vehicle…">
-            <button onclick="ui.addMemory()">Save</button>
-          </div>
-          <div id="memList"></div>
-        </div>
-      </div>
-    </main>
+    </div>
   </div>
 
+  <input id="fileInput" type="file" accept="image/*,application/pdf" class="hidden">
+  <div id="tooltip"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>

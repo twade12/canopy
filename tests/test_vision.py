@@ -9,12 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from canopy.vision.extract import (
+    dedup_memories,
     extract_pinout,
     identify_vehicle,
     parse_json_object,
     suggest_memories,
 )
-from canopy.vision.store import Store
+from canopy.vision.store import Store, normalize_connector
 
 
 class FakeClient:
@@ -64,6 +65,35 @@ def test_identify_and_suggest_memories() -> None:
 
     mems = suggest_memories(FakeClient('{"memories":["CAN-H on pin 6","",  "PCM at C175"]}'), "x")
     assert mems == ["CAN-H on pin 6", "PCM at C175"]
+
+
+def test_normalize_connector_dedups_variants() -> None:
+    assert normalize_connector("1232b") == "C1232B"
+    assert normalize_connector("C1232B") == "C1232B"
+    assert normalize_connector(" c1232e ") == "C1232E"
+    assert normalize_connector("C2280F") == "C2280F"
+    assert normalize_connector("PCM") == "PCM"  # non-numeric label passes through
+
+
+def test_dedup_memories_filters_trivial_and_similar() -> None:
+    existing = ["The HS-CAN bus runs at 500 kbit/s on pins 59 and 43"]
+    candidates = [
+        "short",  # too trivial
+        "HS-CAN bus runs at 500 kbit/s on pins 59 and 43",  # ~duplicate of existing
+        "Pin 2 (ACCR) drives the A/C clutch relay",  # novel, keep
+    ]
+    kept = dedup_memories(candidates, existing)
+    assert kept == ["Pin 2 (ACCR) drives the A/C clutch relay"]
+
+
+def test_merge_normalizes_connector(tmp_path: Path) -> None:
+    store = Store(tmp_path / "n.db")
+    v = store.create_vehicle(label="x")
+    store.merge_pinouts(v["id"], None, 2, [{"connector": "1232b", "pin": "6", "signal": "CAN-H"}])
+    store.merge_pinouts(v["id"], None, 22, [{"connector": "C1232B", "pin": "14", "signal": "L"}])
+    conns = {p["connector"] for p in store.list_pinouts(v["id"])}
+    assert conns == {"C1232B"}  # 1232b and C1232B unified
+    store.close()
 
 
 def test_store_round_trip(tmp_path: Path) -> None:

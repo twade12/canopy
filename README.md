@@ -5,7 +5,7 @@
 <h1 align="center">CANOPY</h1>
 
 <p align="center">
-  <b>CAN-Anchored Reliability & Anomaly Recording sYstem</b><br>
+  <b>CAN-Anchored Reliability & Anomaly Recording sYstem</b> · <i>“Can ’o Pie”</i><br>
   A universal bench station that tests automotive ECUs/modules over CAN, simulates the
   rest of the vehicle, and turns every test into ranked fault diagnoses and wiki knowledge.
 </p>

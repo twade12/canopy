@@ -7,10 +7,23 @@ per-vehicle questions and accumulate memories over time.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+def normalize_connector(name: str) -> str:
+    """Canonicalize a connector label so '1232b' and 'C1232B' map to one key.
+
+    Ford-style connector codes are an optional leading 'C', then digits, then an
+    optional letter (e.g. C1232B). We always emit the leading-'C' uppercase form.
+    Non-connector labels (e.g. 'PCM') pass through uppercased.
+    """
+    s = re.sub(r"\s+", "", str(name or "")).upper()
+    m = re.fullmatch(r"C?(\d{2,}[A-Z]?)", s)
+    return f"C{m.group(1)}" if m else s
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS vehicle (
@@ -165,12 +178,13 @@ class Store:
     ) -> list[dict]:
         """Upsert rows by (connector, pin) so multi-page extraction accumulates."""
         for r in rows:
-            connector, pin = str(r.get("connector", "")), str(r.get("pin", ""))
+            pin = str(r.get("pin", ""))
             if not pin:
                 continue
+            r = {**r, "connector": normalize_connector(r.get("connector", ""))}
             self._conn.execute(
                 "DELETE FROM pinout WHERE vehicle_id = ? AND connector = ? AND pin = ?",
-                (vehicle_id, connector, pin),
+                (vehicle_id, r["connector"], pin),
             )
             self._insert_pinout(vehicle_id, diagram_id, page, r)
         self._conn.commit()

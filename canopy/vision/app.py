@@ -6,10 +6,11 @@ local Ollama model; all data (diagrams, VINs, memories) stays on this machine.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -264,16 +265,53 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             raise HTTPException(503, str(e)) from e
         store.add_message(vehicle_id, "assistant", reply)
 
-        suggested: list[str] = []
-        if body.save_memories:
-            transcript = f"Q: {body.message}\nA: {reply}"
+        saved = _auto_memories(vehicle_id, body.message, reply) if body.save_memories else []
+        return {"reply": reply, "saved_memories": saved}
+
+    def _auto_memories(vehicle_id: int, question: str, answer: str) -> list[str]:
+        """Distil new, salient, non-duplicate facts and save them (kind='auto')."""
+        transcript = f"Q: {question}\nA: {answer}"
+        try:
+            candidates = extract.suggest_memories(client, transcript)
+        except OllamaError:
+            return []
+        existing = [m["content"] for m in store.list_memories(vehicle_id)]
+        fresh = extract.dedup_memories(candidates, existing)
+        for fact in fresh:
+            store.add_memory(vehicle_id, fact, kind="auto")
+        return fresh
+
+    @app.post("/api/vehicles/{vehicle_id}/chat/stream")
+    def chat_stream(vehicle_id: int, body: ChatBody) -> StreamingResponse:
+        imgs = page_image(vehicle_id, body.page)
+        context = _vehicle_context(store, vehicle_id)
+        ptext = page_text(vehicle_id, body.page)
+        if ptext:
+            context += f"\n\nCURRENT PAGE ({body.page + 1}) TEXT LAYER:\n{ptext}"
+        history = [
+            ChatMessage(m["role"], m["content"])
+            for m in store.list_messages(vehicle_id)
+            if m["role"] in ("user", "assistant")
+        ][-8:]
+        store.add_message(vehicle_id, "user", body.message)
+
+        def event_stream():
+            parts: list[str] = []
             try:
-                suggested = extract.suggest_memories(client, transcript)
-            except OllamaError:
-                suggested = []
-            for fact in suggested:
-                store.add_memory(vehicle_id, fact, kind="learned")
-        return {"reply": reply, "saved_memories": suggested}
+                for chunk in extract.chat_about_diagram_stream(
+                    client, body.message, context=context, history=history, images=imgs
+                ):
+                    parts.append(chunk)
+                    yield f"event: token\ndata: {json.dumps(chunk)}\n\n"
+            except OllamaError as e:
+                yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
+                return
+            reply = "".join(parts)
+            store.add_message(vehicle_id, "assistant", reply)
+            saved = _auto_memories(vehicle_id, body.message, reply) if body.save_memories else []
+            yield f"event: done\ndata: {json.dumps({'saved_memories': saved})}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
