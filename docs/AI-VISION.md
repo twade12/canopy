@@ -68,8 +68,18 @@ Open the URL in a browser. The status pill (top-right) turns green when the mode
 
 ## Workflow
 
-1. **+ New vehicle** → it appears in the sidebar.
-2. **Drop a wiring-diagram** image or PDF onto the diagram card.
+### Fast path — upload & auto-analyze
+1. **+** in the sidebar creates a project; drop a diagram on the **Diagram** panel.
+2. On upload the AI makes a **first attempt** at identity (year/make/model/engine/**module
+   type**), a **project name**, and **tags**, then opens a **confirmation modal**.
+3. Edit anything, choose what to auto-run (extract **pinout**, **CAN plan**, **memories**),
+   and hit **Confirm & extract** — the project is named, tagged, and populated automatically.
+
+Manage projects right from the sidebar: **rename** and **delete** buttons appear on hover; **+** adds.
+
+### Manual path
+1. **+ New project** → it appears in the sidebar.
+2. **Drop a wiring-diagram** image or PDF onto the diagram panel.
 3. **Navigate** with ◀ ▶ (or type a page number) to the page showing the connector you want.
 4. **Extract this page** → pins appear, grouped by connector. Or **Extract all pages** to
    scan the whole document (slower — one model pass per page).

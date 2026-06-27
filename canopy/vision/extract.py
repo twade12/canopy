@@ -145,7 +145,8 @@ def identify_vehicle(client: OllamaClient, images: list[str]) -> dict:
         ChatMessage("user", "Identify the vehicle from this diagram.", images=images),
     ]
     data = parse_json_object(client.chat(messages, temperature=0.0))
-    return {k: str(data.get(k, "")) for k in ("vin", "year", "make", "model", "notes")}
+    keys = ("vin", "year", "make", "model", "engine", "module_type", "notes")
+    return {k: str(data.get(k, "")) for k in keys}
 
 
 def can_bench_plan(client: OllamaClient, pinout_text: str, images: list[str]) -> str:

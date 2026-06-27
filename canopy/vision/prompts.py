@@ -58,10 +58,15 @@ Rules:
     + SIGNAL_GLOSSARY
 )
 
-IDENTIFY_SYSTEM = """You identify the vehicle from an automotive wiring/service diagram.
-Return ONLY JSON: {"vin": "", "year": "", "make": "", "model": "", "notes": ""}.
-Extract a VIN only if it is clearly printed. Leave any field you cannot read empty. Do not
-guess."""
+IDENTIFY_SYSTEM = """You identify the subject of an automotive wiring/service diagram for a
+bench-test project. Return ONLY JSON:
+{"vin": "", "year": "", "make": "", "model": "", "engine": "", "module_type": "", "notes": ""}
+- vin: only if clearly printed.
+- year/make/model: the vehicle, when shown (e.g. "2016", "Ford", "F-250 Super Duty").
+- engine: engine/platform if shown (e.g. "6.7L Diesel").
+- module_type: the module the diagram is about if identifiable (PCM, BCM, ECU, TCM, ABS,
+  GPCM, instrument cluster, …); else "".
+Leave any field you cannot read empty. Do not guess."""
 
 CAN_PLAN_SYSTEM = """You are a CAN bench-setup advisor for the CANOPY test station. Given a
 module's extracted pinout, produce a clear, safe plan to connect it to the bench so it can

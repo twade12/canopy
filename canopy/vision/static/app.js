@@ -13,6 +13,7 @@ const ICON = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>', prev: '<path d="M15 6l-6 6 6 6"/>', next: '<path d="M9 6l6 6-6 6"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', warn: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+  edit: '<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
 };
 const svg = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON[n] || ''}</svg>`;
@@ -123,7 +124,7 @@ function renderGroup(group) {
     tab.ondragstart = e => { state.drag = { view: v }; tab.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; };
     tab.ondragend = () => { tab.classList.remove('dragging'); state.drag = null; }; strip.appendChild(tab); });
   const hidden = VIEWS.filter(v => !placedViews(state.dock).has(v.key));
-  if (hidden.length) { const add = document.createElement('div'); add.className = 'tab'; add.style.marginLeft = 'auto'; add.innerHTML = svg('plus'); add.title = 'Add a panel'; add.onclick = e => addMenu(e, group, hidden); strip.appendChild(add); }
+  if (hidden.length) { const add = document.createElement('div'); add.className = 'tab'; add.innerHTML = svg('plus'); add.title = 'Add a panel'; add.onclick = e => addMenu(e, group, hidden); strip.appendChild(add); }
   const body = document.createElement('div'); body.className = 'panel-content'; body.style.position = 'relative';
   const ov = document.createElement('div'); ov.className = 'dropzone-edge'; const zone = document.createElement('div'); zone.className = 'zone'; ov.appendChild(zone); body.appendChild(ov);
   const content = document.createElement('div'); content.className = 'pc-content'; body.appendChild(content);
@@ -137,11 +138,17 @@ function renderGroup(group) {
 function addMenu(e, group, hidden) { e.stopPropagation(); const m = document.createElement('div'); m.className = 'addmenu';
   m.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:5px;box-shadow:var(--shadow);z-index:1000`;
   hidden.forEach(v => { const it = document.createElement('div'); it.style.cssText = 'padding:6px 12px;cursor:pointer;font-size:13px;border-radius:6px;display:flex;gap:7px;align-items:center'; it.innerHTML = svg(v.icon) + ' ' + v.label; it.onmouseenter = () => it.style.background = 'var(--panel-2)'; it.onmouseleave = () => it.style.background = ''; it.onclick = () => { group.tabs.push(v.key); group.active = v.key; saveDock(); renderDock(); m.remove(); }; m.appendChild(it); });
-  document.body.appendChild(m); setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+  document.body.appendChild(m);
+  const r = m.getBoundingClientRect(); m.style.left = Math.max(6, Math.min(e.clientX, innerWidth - r.width - 8)) + 'px'; m.style.top = Math.max(6, Math.min(e.clientY, innerHeight - r.height - 8)) + 'px';
+  setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
 }
 function rerenderGroup(group) { const gEl = document.querySelector(`.group[data-gid="${group.id}"]`); if (!gEl) { renderDock(); return; } gEl.replaceWith(renderGroup(group)); }
 function rerenderView(v) { const g = groupOfView(state.dock, v); if (g && g.active === v) { const c = document.querySelector(`.group[data-gid="${g.id}"] .pc-content`); if (c) renderViewInto(v, c); } }
 function contentOf(v) { const g = groupOfView(state.dock, v); return g ? document.querySelector(`.group[data-gid="${g.id}"] .pc-content`) : null; }
+
+// ---------- modal ----------
+function showModal(node) { closeModal(); const bd = document.createElement('div'); bd.className = 'modal-backdrop'; bd.id = 'modalBackdrop'; bd.appendChild(node); bd.addEventListener('mousedown', e => { if (e.target === bd) closeModal(); }); document.body.appendChild(bd); return bd; }
+function closeModal() { const b = el('modalBackdrop'); if (b) b.remove(); }
 
 function renderViewInto(view, c) {
   if (!c) return;
@@ -179,6 +186,7 @@ const ui = {
     let recs = state.records.filter(v => { const hay = [v.label, v.vin, v.make, v.model, v.year, ...(v.tags || [])].join(' ').toLowerCase(); return !q || hay.includes(q); });
     recs = recs.slice().sort((a, b) => sort === 'title' ? (a.label || '').localeCompare(b.label || '') : (b.created_at || '').localeCompare(a.created_at || ''));
     const card = v => `<div class="rec-item ${state.current && state.current.id === v.id ? 'active' : ''}" onclick="ui.select(${v.id})">
+      <div class="rec-actions"><button class="iconbtn" title="Rename" onclick="event.stopPropagation();ui.renameRecord(${v.id})">${svg('edit')}</button><button class="iconbtn danger" title="Delete" onclick="event.stopPropagation();ui.deleteRecord(${v.id})">${svg('trash')}</button></div>
       <div class="name">${esc(v.label || [v.year, v.make, v.model].filter(Boolean).join(' ') || 'Untitled')}</div>
       ${(v.tags || []).length ? `<div class="tags">${v.tags.slice(0, 6).map(t => `<span class="tagchip">${esc(t)}</span>`).join('')}</div>` : ''}</div>`;
     let html = '';
@@ -262,8 +270,51 @@ const ui = {
     c.innerHTML = `<h3 class="sec">REST API</h3><p class="muted">All endpoints are local. Interactive Swagger: <a href="${ref.swagger}" target="_blank">${ref.swagger}</a> · OpenAPI: <a href="${ref.openapi}" target="_blank">${ref.openapi}</a> (import into Postman).</p>
       ${ref.groups.map(gr => `<div class="api-group"><h4>${esc(gr.group)}</h4>${gr.endpoints.map(e => `<div class="api-ep"><div><span class="m">${esc(e.method)}</span> <span class="p">${esc(e.path)}</span></div><div class="u">${esc(e.use)}</div>${e.example ? `<pre>${esc(e.example)}</pre>` : ''}</div>`).join('')}</div>`).join('')}`; },
 
+  // ---------- project CRUD from sidebar ----------
+  async renameRecord(id) { const v = state.records.find(r => r.id === id); const name = prompt('Project name', v ? (v.label || '') : ''); if (name == null) return; await api.send('/api/vehicles/' + id, 'PATCH', { label: name.trim() }); if (state.current && state.current.id === id) state.current.label = name.trim(); await this.loadRecords(); if (state.current && state.current.id === id) rerenderView('record'); },
+  async deleteRecord(id) { if (!confirm('Delete this project and its diagrams/memories?')) return; await api.send('/api/vehicles/' + id, 'DELETE'); if (state.current && state.current.id === id) { state.current = null; renderDock(); } await this.loadRecords(); },
+  cancelModal() { closeModal(); },
+
   // ---------- actions ----------
-  async uploadFile(file) { if (!state.current) return; try { await api.upload(`/api/vehicles/${state.current.id}/diagram`, file); await this.select(state.current.id); ensureView('diagram'); } catch (e) { alert('Upload failed: ' + e.message); } },
+  async uploadFile(file) {
+    if (!state.current) return;
+    try { await api.upload(`/api/vehicles/${state.current.id}/diagram`, file); } catch (e) { alert('Upload failed: ' + e.message); return; }
+    state.current = await api.get('/api/vehicles/' + state.current.id); state.page = 0; ensureView('diagram'); renderDock();
+    this.analyzeAndConfirm();
+  },
+  async analyzeAndConfirm() {
+    const m = document.createElement('div'); m.className = 'modal';
+    m.innerHTML = `<div class="m-head">${svg('bolt')} Analyze wiring diagram</div><div class="m-sub">Reading the diagram to identify this project…</div><div class="m-body" id="mBody"><div class="thinking" style="padding:18px 0"><span class="spinner"></span> analyzing…</div></div>`;
+    showModal(m);
+    let s; try { s = await api.send(`/api/vehicles/${state.current.id}/suggest`, 'POST', { page: 0 }); }
+    catch (e) { const b = el('mBody'); if (b) b.innerHTML = `<p class="warn">${svg('warn')} ${esc(e.message)}</p>`; m.insertAdjacentHTML('beforeend', `<div class="m-foot"><button class="primary" onclick="closeModal()">Close</button></div>`); return; }
+    el('mBody').innerHTML = `
+      <label class="field"><span>Project name</span><input id="mLabel" value="${esc(s.label || '')}"></label>
+      <div class="row"><label class="field" style="flex:2"><span>VIN</span><input id="mVin" value="${esc(s.vin || '')}"></label><label class="field"><span>Year</span><input id="mYear" value="${esc(s.year || '')}"></label></div>
+      <div class="row"><label class="field" style="flex:1"><span>Make</span><input id="mMake" value="${esc(s.make || '')}"></label><label class="field" style="flex:1"><span>Model</span><input id="mModel" value="${esc(s.model || '')}"></label></div>
+      <div class="row"><label class="field" style="flex:1"><span>Module type</span><input id="mModule" value="${esc(s.module_type || '')}"></label><label class="field" style="flex:1"><span>Engine / spec</span><input id="mEngine" value="${esc(s.engine || '')}"></label></div>
+      <label class="field"><span>Tags (comma-separated)</span><input id="mTags" value="${esc((s.tags || []).join(', '))}"></label>
+      <div class="opts"><span class="muted">After confirming, automatically:</span>
+        <label><input type="checkbox" id="optPin" checked> Extract pinout from <select id="optPinScope" style="width:auto;display:inline-block">${state.pageTotal > 1 ? '<option value="page">current page</option><option value="all">all ' + state.pageTotal + ' pages</option>' : '<option value="page">the diagram</option>'}</select></label>
+        <label><input type="checkbox" id="optPlan"> Generate CAN wiring plan</label>
+        <label><input type="checkbox" id="optMem" checked> Extract memories</label></div>`;
+    m.insertAdjacentHTML('beforeend', `<div class="m-foot"><span class="m-status" id="mStatus"></span><button class="ghost" onclick="ui.cancelModal()">Cancel</button><button class="primary" id="mGo" onclick="ui.runPipeline()">Confirm &amp; extract</button></div>`);
+  },
+  async runPipeline() {
+    const id = state.current.id, g = x => el(x) ? el(x).value.trim() : '';
+    const status = el('mStatus'), go = el('mGo'); if (go) go.disabled = true;
+    const set = t => { if (status) status.innerHTML = `<span class="spinner"></span> ${esc(t)}`; };
+    try {
+      set('saving details…');
+      await api.send('/api/vehicles/' + id, 'PATCH', { label: g('mLabel'), vin: g('mVin'), year: g('mYear'), make: g('mMake'), model: g('mModel') });
+      const tags = g('mTags').split(',').map(t => t.trim()).filter(Boolean); const mod = g('mModule'); if (mod && !tags.some(t => t.toLowerCase() === mod.toLowerCase())) tags.push(mod);
+      for (const t of tags) await api.send(`/api/vehicles/${id}/tags`, 'POST', { tag: t });
+      if (el('optPin') && el('optPin').checked) { const all = el('optPinScope').value === 'all'; set(all ? `extracting pinout (all ${state.pageTotal} pages)…` : 'extracting pinout…'); await api.send(`/api/vehicles/${id}/extract`, 'POST', { page: state.page, all_pages: all }); }
+      if (el('optPlan') && el('optPlan').checked) { set('generating wiring plan…'); const r = await api.send(`/api/vehicles/${id}/can-plan`, 'POST', { page: state.page }); state.plan = r.plan; }
+      if (el('optMem') && el('optMem').checked) { set('extracting memories…'); await api.send(`/api/vehicles/${id}/extract-memories`, 'POST', { page: state.page }); }
+      closeModal(); state.current = await api.get('/api/vehicles/' + id); await this.loadRecords(); renderDock();
+    } catch (e) { if (status) status.innerHTML = `<span class="warn">${esc(e.message)}</span>`; if (go) go.disabled = false; }
+  },
   async busy(id, label, fn) { const b = el(id); const old = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.innerHTML = `<span class="spinner"></span> ${label}`; } try { return await fn(); } catch (e) { alert(e.message); } finally { if (b) { b.disabled = false; b.innerHTML = old; } } },
   async extract(all) { await this.busy(all ? 'exAllBtn' : 'exBtn', all ? `scanning ${state.pageTotal}…` : 'reading…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/extract`, 'POST', { page: state.page, all_pages: !!all }); state.current.pinouts = r.pinouts; ensureView('pinout'); rerenderView('pinout'); }); },
   async identify() { await this.busy('idBtn', 'identifying…', async () => { const v = await api.send(`/api/vehicles/${state.current.id}/identify`, 'POST', { page: state.page }); Object.assign(state.current, v); this.loadRecords(); rerenderView('record'); }); },

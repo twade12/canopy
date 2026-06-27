@@ -303,6 +303,40 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             store.add_tag(vehicle_id, t)
         return {"tags": store.list_tags(vehicle_id)}
 
+    @app.post("/api/vehicles/{vehicle_id}/suggest")
+    def suggest(vehicle_id: int, body: ExtractBody) -> dict:
+        """AI first-attempt at project identity + name + tags (does NOT commit)."""
+        imgs = _require_page(vehicle_id, body.page)
+        try:
+            ident = extract.identify_vehicle(client, imgs)
+            seed = " ".join(filter(None, [ident.get("year"), ident.get("make"),
+                                          ident.get("model"), ident.get("engine"),
+                                          ident.get("module_type")]))
+            tags = extract.extract_tags(client, imgs, seed)
+        except OllamaError as e:
+            raise HTTPException(503, str(e)) from e
+        label = " ".join(filter(None, [ident.get("year"), ident.get("make"),
+                                       ident.get("model"), ident.get("module_type")])).strip()
+        return {**ident, "label": label or "Untitled project", "tags": tags}
+
+    @app.post("/api/vehicles/{vehicle_id}/extract-memories")
+    def extract_memories(vehicle_id: int, body: ExtractBody) -> dict:
+        """Distil durable facts about the project from identity + pinout + page text."""
+        v = store.get_vehicle(vehicle_id)
+        ident = " ".join(filter(None, [v["year"], v["make"], v["model"]]))
+        transcript = (
+            f"Vehicle: {ident}\nConnector pinout:\n{_pinout_text(store.list_pinouts(vehicle_id))}"
+            f"\nDiagram page text:\n{page_text(vehicle_id, body.page)[:2000]}"
+        )
+        try:
+            candidates = extract.suggest_memories(client, transcript)
+        except OllamaError as e:
+            raise HTTPException(503, str(e)) from e
+        existing = [m["content"] for m in store.list_memories(vehicle_id)]
+        saved = [f for f in extract.dedup_memories(candidates, existing)
+                 if save_memory_if_novel(vehicle_id, f, "auto")]
+        return {"memories": saved}
+
     # --- chat ------------------------------------------------------------------
     @app.post("/api/vehicles/{vehicle_id}/chat")
     def chat(vehicle_id: int, body: ChatBody) -> dict:
