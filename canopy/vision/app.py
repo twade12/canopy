@@ -27,6 +27,7 @@ from canopy.vision import bench as benchmod
 from canopy.vision import diagram as dg
 from canopy.vision import knowledge as kb
 from canopy.vision import research as researchmod
+from canopy.vision import wiki as wikimod
 from canopy.vision.api_reference import API_REFERENCE
 from canopy.vision.config import VisionConfig
 from canopy.vision.ollama_client import ChatMessage, OllamaClient, OllamaError
@@ -809,6 +810,11 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             except OllamaError:
                 out["summary"] = ""
         return out
+
+    # --- per-project wiki (compiled, shareable) --------------------------------
+    @app.get("/api/vehicles/{vehicle_id}/wiki")
+    def project_wiki(vehicle_id: int) -> dict:
+        return {"markdown": wikimod.build(store, vehicle_id)}
 
     # --- house knowledge base (curated troubleshooting best-practices) ---------
     @app.get("/api/knowledge")

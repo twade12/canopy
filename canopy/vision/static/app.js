@@ -29,6 +29,7 @@ const VIEWS = [
   { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
   { key: 'triage', label: 'Triage', icon: 'triage' }, { key: 'pcb', label: 'PCB', icon: 'chip' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
+  { key: 'wiki', label: 'Wiki', icon: 'record' },
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
 ];
@@ -51,8 +52,18 @@ const state = { records: [], current: null, page: 0, pageTotal: 1, diagramId: nu
 // ---------- markdown ----------
 function md(t) {
   let s = esc(t).replace(/```([\s\S]*?)```/g, (_, c) => `<pre><code>${c.trim()}</code></pre>`);
-  const lines = s.split('\n'); let out = '', list = null; const close = () => { if (list) { out += `</${list}>`; list = null; } };
+  const lines = s.split('\n'); let out = '', list = null, tbl = [];
+  const close = () => { if (list) { out += `</${list}>`; list = null; } };
+  const flushTbl = () => { if (!tbl.length) return;
+    const rows = tbl.map(r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim()));
+    const sep = rows[1] && rows[1].every(c => /^:?-+:?$/.test(c));
+    const head = sep ? rows[0] : null; const body = sep ? rows.slice(2) : rows;
+    out += '<table>' + (head ? '<thead><tr>' + head.map(c => `<th>${c}</th>`).join('') + '</tr></thead>' : '') +
+      '<tbody>' + body.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+    tbl = []; };
   for (const ln of lines) {
+    if (/^\s*\|.*\|\s*$/.test(ln)) { close(); tbl.push(ln); continue; }
+    flushTbl();
     if (/^\s*[-*]\s+/.test(ln)) { if (list !== 'ul') { close(); out += '<ul>'; list = 'ul'; } out += '<li>' + ln.replace(/^\s*[-*]\s+/, '') + '</li>'; continue; }
     if (/^\s*\d+\.\s+/.test(ln)) { if (list !== 'ol') { close(); out += '<ol>'; list = 'ol'; } out += '<li>' + ln.replace(/^\s*\d+\.\s+/, '') + '</li>'; continue; }
     close();
@@ -61,7 +72,7 @@ function md(t) {
     else if (/^#\s+/.test(ln)) out += '<h1>' + ln.replace(/^#\s+/, '') + '</h1>';
     else if (ln.trim()) out += '<p>' + ln + '</p>';
   }
-  close();
+  flushTbl(); close();
   out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
   out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) =>
     `<img class="md-img" src="${url}" alt="${esc(alt)}" loading="lazy" title="Click to expand" onclick="ui.lightbox('${url}')">`);
@@ -236,7 +247,7 @@ function renderViewInto(view, c) {
   const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch };
   if (globals[view]) return globals[view].call(ui, c);
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
-  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord })[view].call(ui, c);
+  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki })[view].call(ui, c);
 }
 
 // ================= UI =================
@@ -284,7 +295,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null;
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.wikiMd = null;
     try { sessionStorage.setItem('canopy-project', id); } catch {} setTitle(); this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
@@ -666,6 +677,23 @@ const ui = {
   pcbToTriage(i) { state.triageImage = state.pcbImage; ensureView('triage'); const sel = i != null ? state.pcbComponents[i] : null;
     const txt = sel ? `About the ${sel.user_label || sel.label} on this board: ` : 'Here is the ECU board photo. The symptom is: ';
     const inp = el('tIn'); if (inp) { inp.value = txt; inp.focus(); } const a = el('tAttach'); if (a) a.textContent = 'board photo attached — sends with your next message'; },
+
+  // ---------- project wiki (compiled, shareable) ----------
+  viewWiki(c) {
+    if (state.wikiMd == null) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.loadWiki(); return; }
+    c.innerHTML = `<div class="wiki-col">
+      <div class="row" style="margin-bottom:10px"><button onclick="ui.loadWiki(true)">${svg('reset')} Refresh</button><button onclick="ui.wikiCopy()">${svg('record')} Copy Markdown</button><button onclick="ui.wikiPrint()">Print / PDF</button>
+        <span class="muted" style="margin-left:auto;align-self:center;font-size:11px">Compiled from this project's pinout, components, annotations &amp; notes</span></div>
+      <div class="wiki-doc md" id="wikiDoc">${md(state.wikiMd)}</div></div>`;
+  },
+  async loadWiki(force) { if (force) { state.wikiMd = null; rerenderView('wiki'); }
+    try { const r = await api.get(`/api/vehicles/${state.current.id}/wiki`); state.wikiMd = r.markdown || '_Nothing compiled yet._'; }
+    catch { state.wikiMd = '_Could not load the wiki._'; } rerenderView('wiki'); },
+  wikiCopy() { if (state.wikiMd) { navigator.clipboard?.writeText(state.wikiMd); aiToast.show('Wiki Markdown copied'); aiToast.hide(1200); } },
+  wikiPrint() { if (!state.wikiMd) return; const w = window.open('', '_blank'); if (!w) return;
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(state.current.label || 'CANOPY wiki')}</title>
+      <style>body{font-family:system-ui,sans-serif;max-width:820px;margin:24px auto;padding:0 16px;line-height:1.55;color:#111}img{max-width:100%;border:1px solid #ddd;border-radius:6px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:4px 8px;font-size:13px;text-align:left}h1,h2{border-bottom:1px solid #eee;padding-bottom:4px}code{background:#f3f3f3;padding:1px 4px;border-radius:4px}</style></head>
+      <body>${md(state.wikiMd)}</body></html>`); w.document.close(); setTimeout(() => w.print(), 350); },
 
   // ---------- phone pairing ----------
   phoneModal() {

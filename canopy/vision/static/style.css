@@ -230,3 +230,11 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .modal.lightbox #lbCanvas { position: absolute; left: 0; top: 0; cursor: crosshair; touch-action: none; }
 .modal.lightbox .lb-cap { display: flex; gap: 8px; margin-top: 10px; }
 .modal.lightbox .lb-cap input { flex: 1; }
+
+/* project wiki */
+.wiki-col { display: flex; flex-direction: column; height: 100%; }
+.wiki-doc { flex: 1; overflow: auto; padding: 4px 18px 24px; max-width: 880px; }
+.wiki-doc table { border-collapse: collapse; margin: 8px 0; }
+.wiki-doc th, .wiki-doc td { border: 1px solid var(--border); padding: 4px 9px; font-size: 12.5px; text-align: left; }
+.wiki-doc th { background: var(--panel-2); }
+.wiki-doc img.md-img { max-width: 360px; max-height: 280px; }
