@@ -80,8 +80,13 @@ function defaultDock() { state.gid = 1; const g = () => state.gid++;
     { t: 's', dir: 'col', sizes: [58, 42], kids: [
       { t: 'g', id: g(), tabs: ['pinout', 'record'], active: 'pinout' },
       { t: 'g', id: g(), tabs: ['triage', 'pcb', 'chat', 'plan', 'memories', 'api'], active: 'triage' }] }] }; }
-function saveDock() { try { localStorage.setItem('canopy-dock', JSON.stringify(state.dock)); } catch {} }
-function loadDock() { try { const d = JSON.parse(localStorage.getItem('canopy-dock')); if (d && d.t) { let mx = 0; (function walk(n){ if (n.t === 'g') mx = Math.max(mx, n.id); else n.kids.forEach(walk); })(d); state.gid = mx + 1; return d; } } catch {} return defaultDock(); }
+// Dock layout is per-tab (sessionStorage) so multiple CANOPY tabs don't clobber each other;
+// localStorage holds the last layout only as a seed for newly opened tabs.
+function saveDock() { try { const s = JSON.stringify(state.dock); sessionStorage.setItem('canopy-dock', s); localStorage.setItem('canopy-dock', s); } catch {} }
+function loadDock() { try { const raw = sessionStorage.getItem('canopy-dock') || localStorage.getItem('canopy-dock'); const d = JSON.parse(raw); if (d && d.t) { let mx = 0; (function walk(n){ if (n.t === 'g') mx = Math.max(mx, n.id); else n.kids.forEach(walk); })(d); state.gid = mx + 1; return d; } } catch {} return defaultDock(); }
+function setTitle() { document.title = state.current ? `${state.current.label || [state.current.year, state.current.make, state.current.model].filter(Boolean).join(' ') || 'Untitled'} · CANOPY` : 'CANOPY · Vision'; }
+function pcbZoomFor(id) { try { return (JSON.parse(localStorage.getItem('canopy-pcbzoom')) || {})[id] || 1; } catch { return 1; } }
+function savePcbZoom(id, z) { try { const m = JSON.parse(localStorage.getItem('canopy-pcbzoom')) || {}; m[id] = z; localStorage.setItem('canopy-pcbzoom', JSON.stringify(m)); } catch {} }
 const parentOf = (node, t) => { if (node.t !== 's') return null; for (let i = 0; i < node.kids.length; i++) { if (node.kids[i] === t) return { parent: node, idx: i }; const r = parentOf(node.kids[i], t); if (r) return r; } return null; };
 const groupOfView = (node, v) => node.t === 'g' ? (node.tabs.includes(v) ? node : null) : node.kids.reduce((a, k) => a || groupOfView(k, v), null);
 const firstGroup = n => n.t === 'g' ? n : firstGroup(n.kids[0]);
@@ -201,7 +206,9 @@ const ui = {
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.streamCtrl) this.cancelStream(); });
     state.dock = loadDock();
     this.checkHealth(); await this.loadRecords();
-    if (state.records.length) await this.select(state.records[0].id); else renderDock();
+    let want = null; try { want = parseInt(sessionStorage.getItem('canopy-project'), 10); } catch {}
+    const pick = state.records.find(r => r.id === want) || state.records[0];
+    if (pick) await this.select(pick.id); else { setTitle(); renderDock(); }
   },
   async checkHealth() { try { const h = await api.get('/api/health'); el('statusDot').className = 'dot ' + (h.model_ready ? 'ok' : 'bad'); el('statusText').textContent = h.model_ready ? h.model : (h.models.length ? h.model + ' (not pulled)' : 'Ollama offline'); } catch { el('statusDot').className = 'dot bad'; el('statusText').textContent = 'Ollama offline'; } },
 
@@ -232,7 +239,8 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = 1; state.pcbEdit = null; this.renderRecords(); renderDock(); },
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null;
+    try { sessionStorage.setItem('canopy-project', id); } catch {} setTitle(); this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
   viewDiagram(c) {
@@ -307,8 +315,8 @@ const ui = {
       ${ref.groups.map(gr => `<div class="api-group"><h4>${esc(gr.group)}</h4>${gr.endpoints.map(e => `<div class="api-ep"><div><span class="m">${esc(e.method)}</span> <span class="p">${esc(e.path)}</span></div><div class="u">${esc(e.use)}</div>${e.example ? `<pre>${esc(e.example)}</pre>` : ''}</div>`).join('')}</div>`).join('')}`; },
 
   // ---------- project CRUD from sidebar ----------
-  async renameRecord(id) { const v = state.records.find(r => r.id === id); const name = prompt('Project name', v ? (v.label || '') : ''); if (name == null) return; await api.send('/api/vehicles/' + id, 'PATCH', { label: name.trim() }); if (state.current && state.current.id === id) state.current.label = name.trim(); await this.loadRecords(); if (state.current && state.current.id === id) rerenderView('record'); },
-  async deleteRecord(id) { if (!confirm('Delete this project and its diagrams/memories?')) return; await api.send('/api/vehicles/' + id, 'DELETE'); if (state.current && state.current.id === id) { state.current = null; renderDock(); } await this.loadRecords(); },
+  async renameRecord(id) { const v = state.records.find(r => r.id === id); const name = prompt('Project name', v ? (v.label || '') : ''); if (name == null) return; await api.send('/api/vehicles/' + id, 'PATCH', { label: name.trim() }); if (state.current && state.current.id === id) { state.current.label = name.trim(); setTitle(); } await this.loadRecords(); if (state.current && state.current.id === id) rerenderView('record'); },
+  async deleteRecord(id) { if (!confirm('Delete this project and its diagrams/memories?')) return; await api.send('/api/vehicles/' + id, 'DELETE'); if (state.current && state.current.id === id) { state.current = null; try { sessionStorage.removeItem('canopy-project'); } catch {} setTitle(); renderDock(); } await this.loadRecords(); },
   cancelModal() { closeModal(); },
 
   // ---------- actions ----------
@@ -595,6 +603,7 @@ const ui = {
   },
   selectPcb(i) { state.pcbSel = state.pcbSel === i ? null : i; rerenderView('pcb'); },
   pcbZoom(dir) { state.pcbZoom = dir === 0 ? 1 : Math.max(0.5, Math.min(5, (state.pcbZoom || 1) + dir * 0.25));
+    if (state.current) savePcbZoom(state.current.id, state.pcbZoom);
     const w = document.querySelector('.pcb-wrap'); if (w) w.style.height = (state.pcbZoom * 100) + '%';
     const l = el('pcbZlbl'); if (l) l.textContent = Math.round(state.pcbZoom * 100) + '%'; },
   pcbToTriage(i) { state.triageImage = state.pcbImage; ensureView('triage'); const sel = i != null ? state.pcbComponents[i] : null;
@@ -659,7 +668,7 @@ const ui = {
   async extract(all) { await this.busy(all ? 'exAllBtn' : 'exBtn', all ? `scanning ${state.pageTotal}…` : 'reading…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/extract`, 'POST', { page: state.page, all_pages: !!all }); state.current.pinouts = r.pinouts; ensureView('pinout'); rerenderView('pinout'); }); },
   async identify() { await this.busy('idBtn', 'identifying…', async () => { const v = await api.send(`/api/vehicles/${state.current.id}/identify`, 'POST', { page: state.page }); Object.assign(state.current, v); this.loadRecords(); rerenderView('record'); }); },
   async canPlan() { await this.busy('planBtn', 'planning…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/can-plan`, 'POST', { page: state.page }); state.plan = r.plan; rerenderView('plan'); }); },
-  async saveVehicle() { const g = id => el(id) ? el(id).value : undefined; await api.send('/api/vehicles/' + state.current.id, 'PATCH', { label: g('f_label'), vin: g('f_vin'), year: g('f_year'), make: g('f_make'), model: g('f_model') }); state.current = await api.get('/api/vehicles/' + state.current.id); this.loadRecords(); rerenderView('record'); },
+  async saveVehicle() { const g = id => el(id) ? el(id).value : undefined; await api.send('/api/vehicles/' + state.current.id, 'PATCH', { label: g('f_label'), vin: g('f_vin'), year: g('f_year'), make: g('f_make'), model: g('f_model') }); state.current = await api.get('/api/vehicles/' + state.current.id); setTitle(); this.loadRecords(); rerenderView('record'); },
   async deleteVehicle() { if (!confirm('Delete this project?')) return; await api.send('/api/vehicles/' + state.current.id, 'DELETE'); state.current = null; await this.loadRecords(); renderDock(); },
   async addTag() { const i = el('tagIn'); if (!i || !i.value.trim()) return; state.current.tags = await api.send(`/api/vehicles/${state.current.id}/tags`, 'POST', { tag: i.value.trim() }); this.loadRecords(); rerenderView('record'); },
   async removeTag(t) { state.current.tags = await api.send(`/api/vehicles/${state.current.id}/tags/${encodeURIComponent(t)}`, 'DELETE'); this.loadRecords(); rerenderView('record'); },
