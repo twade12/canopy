@@ -217,9 +217,16 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .md-img { display: block; max-width: 240px; max-height: 220px; margin-top: 8px; border-radius: 8px;
   border: 1px solid var(--border); cursor: zoom-in; transition: filter .12s; }
 .md-img:hover { filter: brightness(1.05); }
-.modal.lightbox { width: min(900px, 95vw); padding: 12px; }
+.modal.lightbox { width: min(940px, 96vw); padding: 12px; }
+.modal.lightbox .lb-tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.modal.lightbox .lb-tools button { padding: 5px 9px; font-size: 12.5px; }
+.modal.lightbox .lb-tools .tool.active { outline: 2px solid var(--accent); border-color: var(--accent); }
+.lb-sw { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; display: inline-block; vertical-align: middle; margin-right: 3px; }
+.lb-sw.active { outline: 2px solid var(--text); }
 .modal.lightbox .lb-img { display: flex; justify-content: center; background: var(--panel-2);
-  border-radius: 10px; overflow: auto; max-height: 76vh; }
-.modal.lightbox .lb-img img { max-width: 100%; max-height: 76vh; object-fit: contain; border-radius: 8px; }
+  border-radius: 10px; overflow: auto; max-height: 74vh; }
+.modal.lightbox .lb-canvaswrap { position: relative; display: inline-block; line-height: 0; }
+.modal.lightbox #lbImg { display: block; max-width: 100%; max-height: 72vh; width: auto; border-radius: 8px; }
+.modal.lightbox #lbCanvas { position: absolute; left: 0; top: 0; cursor: crosshair; touch-action: none; }
 .modal.lightbox .lb-cap { display: flex; gap: 8px; margin-top: 10px; }
 .modal.lightbox .lb-cap input { flex: 1; }

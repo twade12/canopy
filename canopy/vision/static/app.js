@@ -15,6 +15,7 @@ const ICON = {
   upload: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', warn: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
   edit: '<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  arrow: '<path d="M5 19L19 5M19 5h-7M19 5v7"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -185,6 +186,50 @@ const aiToast = {
 // ---------- modal ----------
 function showModal(node) { closeModal(); const bd = document.createElement('div'); bd.className = 'modal-backdrop'; bd.id = 'modalBackdrop'; bd.appendChild(node); bd.addEventListener('mousedown', e => { if (e.target === bd) closeModal(); }); document.body.appendChild(bd); return bd; }
 function closeModal() { const b = el('modalBackdrop'); if (b) b.remove(); }
+
+// freehand / arrow / box annotation overlay for the lightbox (markup for the wiki)
+const anno = {
+  tool: 'pen', color: '#ef4444', strokes: [], cur: null, canvas: null, ctx: null, img: null,
+  init(canvas, img) {
+    this.canvas = canvas; this.img = img; this.strokes = []; this.cur = null;
+    const w = img.clientWidth, h = img.clientHeight; canvas.width = w; canvas.height = h;
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; this.ctx = canvas.getContext('2d');
+    const pt = e => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+    canvas.onpointerdown = e => { canvas.setPointerCapture(e.pointerId); this.cur = { tool: this.tool, color: this.color, pts: [pt(e)] }; };
+    canvas.onpointermove = e => { if (!this.cur) return; const p = pt(e); if (this.cur.tool === 'pen') this.cur.pts.push(p); else this.cur.pts[1] = p; this.redraw(); };
+    canvas.onpointerup = () => { if (this.cur && this.cur.pts.length > 1) this.strokes.push(this.cur); this.cur = null; this.redraw(); };
+    this.redraw();
+  },
+  setTool(t, btn) { this.tool = t; document.querySelectorAll('.lb-tools .tool').forEach(b => b.classList.toggle('active', b === btn)); },
+  setColor(c) { this.color = c; document.querySelectorAll('.lb-sw').forEach(s => s.classList.toggle('active', s.dataset.c === c)); },
+  undo() { this.strokes.pop(); this.redraw(); },
+  clear() { this.strokes = []; this.redraw(); },
+  _draw(ctx, s, W, H, scale) {
+    ctx.strokeStyle = s.color; ctx.fillStyle = s.color; ctx.lineWidth = Math.max(2, 3 * scale); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const P = s.pts.map(([x, y]) => [x * W, y * H]);
+    if (s.tool === 'pen') { ctx.beginPath(); P.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); }
+    else if (s.tool === 'box') { const [a, b] = P; ctx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); }
+    else if (s.tool === 'arrow') { const [a, b] = P; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      const ang = Math.atan2(b[1] - a[1], b[0] - a[0]); const hl = Math.max(10, 16 * scale);
+      ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(b[0] - hl * Math.cos(ang - 0.4), b[1] - hl * Math.sin(ang - 0.4));
+      ctx.lineTo(b[0] - hl * Math.cos(ang + 0.4), b[1] - hl * Math.sin(ang + 0.4)); ctx.closePath(); ctx.fill(); }
+  },
+  redraw() { const { ctx, canvas } = this; if (!ctx) return; ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const all = this.cur ? [...this.strokes, this.cur] : this.strokes;
+    all.forEach(s => this._draw(ctx, s, canvas.width, canvas.height, 1)); },
+  async save() {
+    if (!this.img || !state.current) return; const st = el('lbStatus'); if (st) st.textContent = 'Saving…';
+    const W = this.img.naturalWidth, H = this.img.naturalHeight;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const ctx = cv.getContext('2d');
+    ctx.drawImage(this.img, 0, 0, W, H); const scale = W / this.canvas.width;
+    this.strokes.forEach(s => this._draw(ctx, s, W, H, scale));
+    try { const note = (el('lbCap') || {}).value || '';
+      const r = await api.send(`/api/vehicles/${state.current.id}/annotation`, 'POST', { image: cv.toDataURL('image/png'), note: note.trim() });
+      if (st) st.textContent = 'Saved to project attachments'; aiToast.done('Annotation saved');
+      const cap = el('lbSaveCap'); if (cap) cap.setAttribute('onclick', `ui.saveCaption(${r.id})`);
+    } catch (e) { if (st) st.textContent = ''; alert(e.message); }
+  },
+};
 
 function renderViewInto(view, c) {
   if (!c) return;
@@ -589,17 +634,29 @@ const ui = {
   async lightbox(src) {
     const m = document.createElement('div'); m.className = 'modal lightbox';
     const att = (src.match(/\/api\/attachment\/(\d+)\/image/) || [])[1];
-    m.innerHTML = `<div class="lb-img"><img src="${src}" alt=""></div>
-      ${att ? `<div class="lb-cap"><input id="lbCap" placeholder="Add a caption / annotation for the wiki…">
-        <button class="primary" id="lbSave" onclick="ui.saveCaption(${att})">Save</button></div>` : ''}
-      <div class="m-foot"><button onclick="closeModal()">Close</button></div>`;
+    const sw = c => `<span class="lb-sw" style="background:${c}" onclick="anno.setColor('${c}')" data-c="${c}"></span>`;
+    m.innerHTML = `<div class="lb-tools">
+        <button class="tool active" data-tool="pen" onclick="anno.setTool('pen',this)">${svg('edit')} Draw</button>
+        <button class="tool" data-tool="arrow" onclick="anno.setTool('arrow',this)">${svg('arrow')} Arrow</button>
+        <button class="tool" data-tool="box" onclick="anno.setTool('box',this)">${svg('chip')} Box</button>
+        <span style="margin:0 4px">${sw('#ef4444')}${sw('#f59e0b')}${sw('#0f9d6b')}${sw('#0e8aa6')}${sw('#ffffff')}</span>
+        <button onclick="anno.undo()">Undo</button><button onclick="anno.clear()">Clear</button>
+        <button class="primary" style="margin-left:auto" onclick="anno.save()">${svg('record')} Save annotated</button></div>
+      <div class="lb-img"><div class="lb-canvaswrap"><img id="lbImg" src="${src}" alt=""><canvas id="lbCanvas"></canvas></div></div>
+      <div class="lb-cap"><input id="lbCap" placeholder="Add a caption / annotation for the wiki…">
+        <button class="primary" id="lbSaveCap" onclick="ui.saveCaption(${att || 'null'})">Save caption</button></div>
+      <div class="m-foot"><span class="m-status" id="lbStatus"></span><button onclick="closeModal()">Close</button></div>`;
     showModal(m);
+    const img = el('lbImg'); const done = () => anno.init(el('lbCanvas'), img);
+    if (img.complete) done(); else img.onload = done;
     if (att) { try { const a = await api.get(`/api/attachment/${att}`); const i = el('lbCap'); if (i) i.value = a.note || ''; } catch {} }
   },
   async saveCaption(att) {
-    const i = el('lbCap'); if (!i) return; const btn = el('lbSave'); if (btn) btn.textContent = 'Saving…';
+    const i = el('lbCap'); if (!i) return; const btn = el('lbSaveCap');
+    if (att == null) { alert('Save the annotated image first (creates a record to caption).'); return; }
+    if (btn) btn.textContent = 'Saving…';
     try { await api.send(`/api/attachment/${att}`, 'PATCH', { note: i.value.trim() }); if (btn) btn.textContent = 'Saved'; aiToast.done('Caption saved'); }
-    catch (e) { if (btn) btn.textContent = 'Save'; alert(e.message); }
+    catch (e) { if (btn) btn.textContent = 'Save caption'; alert(e.message); }
   },
   selectPcb(i) { state.pcbSel = state.pcbSel === i ? null : i; rerenderView('pcb'); },
   pcbZoom(dir) { state.pcbZoom = dir === 0 ? 1 : Math.max(0.5, Math.min(5, (state.pcbZoom || 1) + dir * 0.25));

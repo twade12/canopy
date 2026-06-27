@@ -125,6 +125,11 @@ class AttachmentUpdate(BaseModel):
     note: str = ""  # caption / annotation for the image (for the wiki)
 
 
+class AnnotationBody(BaseModel):
+    image: str       # base64 PNG of the flattened (image + drawn markup) annotation
+    note: str = ""   # caption
+
+
 def _parse_id(v: str) -> int:
     v = v.strip()
     return int(v, 16) if v.lower().startswith("0x") else int(v, 16)
@@ -701,6 +706,19 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     @app.get("/api/vehicles/{vehicle_id}/attachments")
     def list_attachments(vehicle_id: int) -> list[dict]:
         return store.list_attachments(vehicle_id)
+
+    @app.post("/api/vehicles/{vehicle_id}/annotation")
+    def save_annotation(vehicle_id: int, body: AnnotationBody) -> dict:
+        b64 = _decode_b64_image(body.image)
+        try:
+            raw = base64.b64decode(b64)
+            path = config.uploads_dir / f"v{vehicle_id}_anno_{int(time.time() * 1000)}.png"
+            path.write_bytes(raw)
+        except (ValueError, OSError) as e:
+            raise HTTPException(400, "bad image") from e
+        att = store.add_attachment(
+            vehicle_id, str(path), kind="annotation", note=body.note[:300])
+        return {"id": att["id"], "kind": att["kind"], "note": att["note"] or ""}
 
     @app.get("/api/attachment/{attachment_id}/image")
     def attachment_image(attachment_id: int) -> Response:
