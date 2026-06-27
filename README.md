@@ -86,12 +86,15 @@ virtual bus today.**
 | [`canopy/sim/`](canopy/sim/) | **Virtual vehicle**: periodic restbus scheduler, **E2E** rolling alive-counter + checksum (`crc8_j1850`/`sum8`/`xor8`), network management, per-ECU **UDS server**, YAML/DBC loader. |
 | [`canopy/hal/isotp.py`](canopy/hal/isotp.py) · [`hal/uds.py`](canopy/hal/uds.py) | ISO-TP transport + `udsoncan` **tester client** (session, VIN, read/clear DTC). |
 | [`canopy/data/`](canopy/data/) | SQLAlchemy models for `Module/Adapter/TestRun/Observation/SymptomVector/Case` (portable now, Postgres+Timescale+pgvector in Phase 1). |
-| [`canopy/cli.py`](canopy/cli.py) | `send`, `monitor`, `decode`, **`sim run`**, **`uds vin/read-dtc/clear-dtc`**. |
+| [`canopy/vision/`](canopy/vision/) | **Local AI wiring-diagram tool** — FastAPI web UI + Ollama multimodal model: ingest a diagram (image/PDF), extract pinouts, draft a CAN bench plan, chat, save per-vehicle memories (VIN-keyed). |
+| [`canopy/cli.py`](canopy/cli.py) | `send`, `monitor`, `decode`, **`sim run`**, **`uds vin/read-dtc/clear-dtc`**, **`vision serve`**. |
 | [`vehicles/ford_f250_6.7.yaml`](vehicles/ford_f250_6.7.yaml) | Reference platform: PCM/TCM/BCM restbus + PCM UDS personality. |
-| [`tests/`](tests/) | 17 tests incl. a multi-frame UDS round-trip and E2E restbus, against `vcan0` (CI falls back to an in-process `virtual` bus). |
+| [`tests/`](tests/) | 21 tests incl. a multi-frame UDS round-trip, E2E restbus, and the vision pipeline, against `vcan0` (CI falls back to an in-process `virtual` bus). |
 
-**Hardware design:** see [docs/HARDWARE.md](docs/HARDWARE.md) for the modular
-"car-in-a-box" schematics + BOM (incl. a one-week off-the-shelf prototype).
+**Guides:** [docs/USAGE.md](docs/USAGE.md) — driving the stack with a real USB-CAN adapter ·
+[docs/AI-VISION.md](docs/AI-VISION.md) — the local AI wiring-diagram tool ·
+[docs/HARDWARE.md](docs/HARDWARE.md) — modular "car-in-a-box" schematics + BOM (incl. a
+one-week off-the-shelf prototype).
 
 **Not yet implemented** (later phases): PSU/INA228/matrix/scope drivers, power sequencing,
 module profiles + runner, vision pipeline, diagnosis engine, web UI.
@@ -173,6 +176,18 @@ canopy sim run vehicles/ford_f250_6.7.yaml --channel vcan0
 canopy uds vin vcan0           # → 1FT7W2BT0GEA12345  (multi-frame ISO-TP)
 canopy uds read-dtc vcan0      # → 0x010100 status=0x09 …
 canopy uds clear-dtc vcan0
+```
+
+### Local AI wiring-diagram tool
+
+A self-hosted web UI that reads a wiring diagram with a **local** Ollama multimodal model,
+extracts the pinout, drafts a CAN bench plan, and chats about the vehicle — nothing leaves
+the machine. See [docs/AI-VISION.md](docs/AI-VISION.md).
+
+```bash
+pip install -e ".[vision]"            # uvicorn + pymupdf + pillow
+ollama pull gemma4:26b                # or gemma3:27b / gemma3:12b
+canopy vision serve                   # → http://127.0.0.1:8088
 ```
 
 Self-test loop on one machine:

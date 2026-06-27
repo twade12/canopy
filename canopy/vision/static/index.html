@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CANOPY · Vision</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">
+      <svg class="leaf" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="42" r="26" fill="#10b981"/>
+        <circle cx="32" cy="52" r="17" fill="#34d399"/>
+        <circle cx="68" cy="52" r="17" fill="#34d399"/>
+        <circle cx="50" cy="30" r="15" fill="#7cf0bc"/>
+        <rect x="46" y="60" width="8" height="30" rx="4" fill="#5a4632"/>
+      </svg>
+      <span class="wordmark">CANOPY</span>
+      <span class="sub">VISION</span>
+    </div>
+    <div class="status-pill"><span id="statusDot" class="dot"></span><span id="statusText">checking model…</span></div>
+  </header>
+
+  <div class="app">
+    <aside class="sidebar">
+      <h2>Vehicles</h2>
+      <button class="primary" style="width:100%;margin-bottom:14px" onclick="ui.newVehicle()">+ New vehicle</button>
+      <div id="vehicleList"></div>
+    </aside>
+
+    <main class="content">
+      <div id="emptyState" class="empty">
+        <p>Select or create a vehicle to begin.</p>
+        <p class="muted">Upload a wiring diagram, extract its pinout, and ask the local AI how to wire it for CAN.</p>
+      </div>
+
+      <div id="workspace" class="hidden">
+        <!-- vehicle identity -->
+        <div class="card">
+          <h3>🚗 <span id="vehTitle">Vehicle</span></h3>
+          <div class="row">
+            <label class="field" style="flex:2"><span>VIN</span><input id="vin" placeholder="17-char VIN"></label>
+            <label class="field"><span>Year</span><input id="year" placeholder="2016"></label>
+            <label class="field"><span>Make</span><input id="make" placeholder="Ford"></label>
+            <label class="field"><span>Model</span><input id="model" placeholder="F-250 6.7L"></label>
+          </div>
+          <div class="row">
+            <button class="primary" onclick="ui.saveVehicle()">Save</button>
+            <button onclick="ui.identify()" id="identifyBtn">Identify from diagram</button>
+            <button class="ghost danger" onclick="ui.deleteVehicle()">Delete</button>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <!-- diagram -->
+          <div class="card">
+            <h3>📐 Wiring diagram</h3>
+            <div id="dropzone" class="dropzone">
+              <strong>Drop</strong> an image or PDF here, or click to choose.<br>
+              <span class="muted">PNG · JPG · PDF</span>
+            </div>
+            <input id="fileInput" type="file" accept="image/*,application/pdf" class="hidden">
+            <div id="diagramPreview" class="diagram-preview" style="margin-top:14px"></div>
+            <div class="row" style="margin-top:14px">
+              <button class="primary" onclick="ui.extract()" id="extractBtn" disabled>Extract pinout</button>
+              <button onclick="ui.canPlan()" id="canPlanBtn" disabled>CAN wiring plan</button>
+            </div>
+          </div>
+
+          <!-- pinout -->
+          <div class="card">
+            <h3>🔌 Extracted pinout <span id="connectorName" class="muted"></span></h3>
+            <div id="pinoutTable"><p class="muted">No pinout yet. Upload a diagram and hit “Extract pinout”.</p></div>
+          </div>
+        </div>
+
+        <!-- can plan output -->
+        <div id="planCard" class="card hidden">
+          <h3>🧭 CAN bench wiring plan</h3>
+          <div id="planOutput" class="md"></div>
+          <p class="warn">⚠ Verify power &amp; ground pins by hand and set the PSU current limit before energizing. AI parses can be wrong.</p>
+        </div>
+
+        <!-- chat -->
+        <div class="card">
+          <h3>💬 Ask about this vehicle</h3>
+          <div class="chips">
+            <span class="chip" onclick="ui.ask('How do I wire this module to communicate over CAN?')">How to wire for CAN?</span>
+            <span class="chip" onclick="ui.ask('How can I simulate a test on the A/C clutch relay in this vehicle?')">Simulate A/C clutch relay</span>
+            <span class="chip" onclick="ui.ask('Which pins are power, ground, CAN-H and CAN-L?')">Power / GND / CAN pins</span>
+            <span class="chip" onclick="ui.ask('What modules are on the CAN bus and how are they connected?')">CAN bus topology</span>
+          </div>
+          <div class="chat">
+            <div id="messages" class="messages"></div>
+            <div class="chat-input">
+              <textarea id="chatInput" placeholder="Ask a question about the wiring diagram…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ui.send();}"></textarea>
+              <button class="primary" id="sendBtn" onclick="ui.send()">Send</button>
+            </div>
+            <label class="toggle"><input type="checkbox" id="saveMem" style="width:auto"> Save learned facts to memory after each answer</label>
+          </div>
+        </div>
+
+        <!-- memories -->
+        <div class="card">
+          <h3>🧠 Memories <span class="muted">— saved knowledge for this vehicle</span></h3>
+          <div class="chat-input" style="margin-bottom:12px">
+            <input id="memInput" placeholder="Add a fact to remember about this vehicle…">
+            <button onclick="ui.addMemory()">Save</button>
+          </div>
+          <div id="memList"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

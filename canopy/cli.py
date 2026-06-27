@@ -208,5 +208,36 @@ def uds_clear_dtc(
     typer.echo("DTCs cleared")
 
 
+# --- vision: local AI wiring-diagram tool -------------------------------------
+vision_app = typer.Typer(help="Local AI wiring-diagram + chat web UI (Ollama).")
+app.add_typer(vision_app, name="vision")
+
+
+@vision_app.command("serve")
+def vision_serve(
+    host: str = typer.Option("127.0.0.1", help="Bind address."),
+    port: int = typer.Option(8088, help="Port."),
+    model: str | None = typer.Option(None, help="Ollama model (default: gemma4:26b)."),
+    ollama_url: str | None = typer.Option(None, help="Ollama base URL."),
+) -> None:
+    """Launch the wiring-diagram vision/chat server (needs the 'vision' extra + Ollama)."""
+    try:
+        import uvicorn
+
+        from canopy.vision.app import create_app
+        from canopy.vision.config import VisionConfig
+    except ModuleNotFoundError as exc:
+        raise typer.BadParameter(
+            f"vision extra not installed ({exc.name}). Run: pip install -e '.[vision]'"
+        ) from exc
+
+    config = VisionConfig.from_env(model=model, ollama_url=ollama_url)
+    config.ensure_dirs()
+    typer.echo(
+        f"CANOPY Vision → http://{host}:{port}  (model: {config.model}, data: {config.data_dir})"
+    )
+    uvicorn.run(create_app(config), host=host, port=port)
+
+
 if __name__ == "__main__":
     app()

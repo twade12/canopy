@@ -46,13 +46,14 @@ class CanConfig:
                 return default
             return raw.strip().lower() in {"1", "true", "yes", "on"}
 
+        d = cls()  # slots=True: read defaults from an instance, not the class descriptors
         base = cls(
-            interface=str(env("INTERFACE", cls.interface)),
-            channel=str(env("CHANNEL", cls.channel)),
-            bitrate=int(env("BITRATE", cls.bitrate)),
-            fd=env_bool("FD", cls.fd),
-            data_bitrate=int(env("DATA_BITRATE", cls.data_bitrate)),
-            receive_own_messages=env_bool("RECEIVE_OWN_MESSAGES", cls.receive_own_messages),
+            interface=str(env("INTERFACE", d.interface)),
+            channel=str(env("CHANNEL", d.channel)),
+            bitrate=int(env("BITRATE", d.bitrate)),
+            fd=env_bool("FD", d.fd),
+            data_bitrate=int(env("DATA_BITRATE", d.data_bitrate)),
+            receive_own_messages=env_bool("RECEIVE_OWN_MESSAGES", d.receive_own_messages),
         )
         for key, value in overrides.items():
             if value is not None:
