@@ -184,7 +184,9 @@ regions visible in the image. For EACH, return:
   "H-bridge / motor driver", "Low-side MOSFET driver", "Electrolytic capacitor bank",
   "Crystal / oscillator", "Vehicle harness connector", "Flyback / boost converter",
   "EEPROM / Flash", "Voltage reference", "Power inductor", "Relay".
-- "box": bounding box [x0,y0,x1,y1] as FRACTIONS 0..1 of image width/height (origin top-left).
+- "box": bounding box as [ymin, xmin, ymax, xmax] — integers 0-1000 normalized to the image
+  (origin top-left; y along height, x along width). Example: a chip in the upper-left is about
+  [80, 60, 240, 260]. Box each component tightly around the part you actually see.
 - "function": what it does in this module.
 - "check": what to inspect/measure and WHICH TOOL — multimeter (rails, continuity, diode),
   oscilloscope (signals, ripple, comms), thermal camera (hot spots), magnifier (cracked

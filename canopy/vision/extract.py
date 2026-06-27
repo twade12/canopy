@@ -35,7 +35,7 @@ def analyze_pcb(client: OllamaClient, images: list[str], context: str = "") -> d
         ChatMessage("user", user, images=images),
     ]
     data = parse_json_object(client.chat(messages, temperature=0.0))
-    comps = []
+    raw = []
     for c in data.get("components", []) or []:
         if not isinstance(c, dict):
             continue
@@ -43,12 +43,27 @@ def analyze_pcb(client: OllamaClient, images: list[str], context: str = "") -> d
         if not (isinstance(box, list) and len(box) == 4):
             continue
         try:
-            box = [max(0.0, min(1.0, float(x))) for x in box]
+            raw.append((c, [float(x) for x in box]))
         except (TypeError, ValueError):
             continue
+    if not raw:
+        return {"components": []}
+    # gemma/Gemini emit boxes as [ymin, xmin, ymax, xmax] on a 0-1000 scale. Auto-detect
+    # 0-1000 vs 0..1 fractions, then convert to fractional [x0, y0, x1, y1].
+    mx = max(v for _, vals in raw for v in vals)
+    scale = 1000.0 if mx > 1.5 else 1.0
+
+    def clamp(v: float) -> float:
+        return max(0.0, min(1.0, v))
+
+    comps = []
+    for c, vals in raw:
+        ymin, xmin, ymax, xmax = (v / scale for v in vals)
+        x0, x1 = sorted((xmin, xmax))
+        y0, y1 = sorted((ymin, ymax))
         comps.append({
             "label": str(c.get("label", "")),
-            "box": box,
+            "box": [clamp(x0), clamp(y0), clamp(x1), clamp(y1)],
             "function": str(c.get("function", "")),
             "check": str(c.get("check", "")),
             "part": str(c.get("part", "")),
