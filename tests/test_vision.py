@@ -35,18 +35,26 @@ def test_parse_json_object_handles_fences_and_prose() -> None:
     assert parse_json_object("not json") == {}
 
 
-def test_extract_pinout_normalizes() -> None:
+def test_extract_pinout_connectors_schema() -> None:
     client = FakeClient(
-        '{"connector":"C175","pins":[{"pin":1,"signal":"CAN-H"},{"pin":"2","signal":"CAN-L","wire_color":"green"}]}'
+        '{"connectors":[{"connector":"C1232B","pins":['
+        '{"pin":59,"signal":"HS CAN +","function":"CAN High","circuit":"VDB04",'
+        '"wire_color":"WH/bu","connects_to":"Module Communication Network"}]}]}'
     )
-    out = extract_pinout(client, images=["<b64>"])
-    assert out["connector"] == "C175"
-    assert out["pins"][0] == {
-        "connector": "C175", "pin": "1", "signal": "CAN-H",
-        "wire_color": "", "mating": "", "notes": "",
-    }
-    assert out["pins"][1]["wire_color"] == "green"
+    out = extract_pinout(client, ["<b64>"], page_text="59 HS CAN +")
+    assert out["connectors"] == ["C1232B"]
+    p = out["pins"][0]
+    assert p["connector"] == "C1232B" and p["pin"] == "59"
+    assert p["function"] == "CAN High" and p["circuit"] == "VDB04"
+    assert p["connects_to"] == "Module Communication Network"
     assert client.calls[0]["format_json"] is False  # constrained JSON breaks some local models
+
+
+def test_extract_pinout_flat_fallback() -> None:
+    client = FakeClient('{"connector":"C175","pins":[{"pin":"6","signal":"CAN-H"}]}')
+    out = extract_pinout(client, ["<b64>"])
+    assert out["pins"][0]["pin"] == "6"
+    assert out["pins"][0]["connector"] == "C175"
 
 
 def test_identify_and_suggest_memories() -> None:
@@ -67,12 +75,22 @@ def test_store_round_trip(tmp_path: Path) -> None:
     d = store.latest_diagram(v["id"])
     assert d["filename"] == "c175.png"
 
-    store.replace_pinouts(v["id"], d["id"], [
-        {"connector": "C175", "pin": "6", "signal": "CAN-H"},
-        {"connector": "C175", "pin": "14", "signal": "CAN-L"},
+    # merge accumulates across pages and upserts by (connector, pin)
+    store.merge_pinouts(v["id"], d["id"], 5, [
+        {"connector": "C1232B", "pin": "59", "signal": "HS CAN +", "function": "CAN High",
+         "circuit": "VDB04", "wire_color": "WH/bu"},
+        {"connector": "C1232B", "pin": "43", "signal": "HS CAN -", "function": "CAN Low"},
+    ])
+    store.merge_pinouts(v["id"], d["id"], 6, [
+        {"connector": "C1232B", "pin": "02", "signal": "ACCR", "function": "A/C clutch relay"},
+        {"connector": "C1232B", "pin": "59", "signal": "HS CAN +", "function": "updated"},  # upsert
     ])
     pins = store.list_pinouts(v["id"])
-    assert {p["signal"] for p in pins} == {"CAN-H", "CAN-L"}
+    assert {p["pin"] for p in pins} == {"59", "43", "02"}   # 59 upserted, not duplicated
+    by_pin = {p["pin"]: p for p in pins}
+    assert by_pin["59"]["function"] == "updated"
+    assert by_pin["02"]["function"] == "A/C clutch relay"
+    assert by_pin["59"]["circuit"] == ""                    # row replaced; circuit not re-supplied
 
     store.add_memory(v["id"], "CAN bus is HS-CAN at 500k", kind="learned")
     assert store.list_memories(v["id"])[0]["kind"] == "learned"

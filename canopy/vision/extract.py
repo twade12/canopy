@@ -40,31 +40,61 @@ def parse_json_object(text: str) -> dict:
     return {}
 
 
-def extract_pinout(client: OllamaClient, images: list[str]) -> dict:
-    """Return ``{"connector": str, "pins": [ {pin, signal, wire_color, mating, notes} ]}``."""
+def _coerce_pin(connector: str, p: dict) -> dict:
+    return {
+        "connector": connector,
+        "pin": str(p.get("pin", "")),
+        "signal": str(p.get("signal", "")),
+        "function": str(p.get("function", "")),
+        "wire_color": str(p.get("wire_color", "")),
+        "circuit": str(p.get("circuit", "")),
+        "connects_to": str(p.get("connects_to", "")),
+        "mating": str(p.get("mating", "")),
+        "notes": str(p.get("notes", "")),
+    }
+
+
+def extract_pinout(client: OllamaClient, images: list[str], page_text: str = "") -> dict:
+    """Extract pins for the connector(s) on one page.
+
+    Returns ``{"connectors": [str], "pins": [ {connector, pin, signal, function, …} ]}``.
+    The embedded ``page_text`` (PDF text layer) is authoritative and is sent alongside the
+    image for accuracy.
+    """
+    user = "Extract every pin for the connector(s) on this diagram page."
+    if page_text:
+        user += (
+            "\n\nThe page's extracted TEXT LAYER (authoritative for pin numbers, signal "
+            f"labels, and wire codes) is below:\n---\n{page_text}\n---"
+        )
     messages = [
         ChatMessage("system", EXTRACT_SYSTEM),
-        ChatMessage("user", "Extract the connector pinout from this diagram.", images=images),
+        ChatMessage("user", user, images=images),
     ]
     # Note: Ollama's constrained `format=json` makes some models (e.g. gemma4) degenerate
     # into repetition loops; prompt-driven JSON + defensive parsing is more reliable.
     data = parse_json_object(client.chat(messages, temperature=0.0))
-    connector = str(data.get("connector", ""))
-    pins = []
-    for p in data.get("pins", []) or []:
-        if not isinstance(p, dict):
-            continue
-        pins.append(
-            {
-                "connector": connector,
-                "pin": str(p.get("pin", "")),
-                "signal": str(p.get("signal", "")),
-                "wire_color": str(p.get("wire_color", "")),
-                "mating": str(p.get("mating", "")),
-                "notes": str(p.get("notes", "")),
-            }
-        )
-    return {"connector": connector, "pins": pins}
+
+    connectors_out: list[str] = []
+    pins: list[dict] = []
+    connectors = data.get("connectors")
+    if isinstance(connectors, list) and connectors:
+        for c in connectors:
+            if not isinstance(c, dict):
+                continue
+            name = str(c.get("connector", ""))
+            connectors_out.append(name)
+            for p in c.get("pins", []) or []:
+                if isinstance(p, dict):
+                    pins.append(_coerce_pin(name, p))
+    else:
+        # Fallback: model returned the older flat shape.
+        name = str(data.get("connector", ""))
+        connectors_out.append(name)
+        for p in data.get("pins", []) or []:
+            if isinstance(p, dict):
+                pins.append(_coerce_pin(name, p))
+    return {"connectors": [c for c in connectors_out if c], "pins": pins}
 
 
 def identify_vehicle(client: OllamaClient, images: list[str]) -> dict:

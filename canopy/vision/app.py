@@ -39,15 +39,23 @@ class MemoryBody(BaseModel):
 class ChatBody(BaseModel):
     message: str
     save_memories: bool = False
+    page: int = 0
+
+
+class ExtractBody(BaseModel):
+    page: int = 0
+    all_pages: bool = False
 
 
 def _pinout_text(pinouts: list[dict]) -> str:
     if not pinouts:
         return "(no pinout extracted yet)"
-    lines = ["connector | pin | signal | wire_color | mating"]
+    lines = ["connector | pin | signal | function | circuit | wire_color | connects_to"]
     for p in pinouts:
         lines.append(
-            f"{p['connector']} | {p['pin']} | {p['signal']} | {p['wire_color']} | {p['mating']}"
+            f"{p.get('connector','')} | {p.get('pin','')} | {p.get('signal','')} | "
+            f"{p.get('function','')} | {p.get('circuit','')} | {p.get('wire_color','')} | "
+            f"{p.get('connects_to','')}"
         )
     return "\n".join(lines)
 
@@ -73,16 +81,22 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     client = OllamaClient(
         config.ollama_url, config.model, timeout=config.request_timeout
     )
-    image_cache: dict[int, list[str]] = {}
+    image_cache: dict[tuple[int, int], list[str]] = {}
 
-    def images_for_vehicle(vehicle_id: int) -> list[str]:
+    def page_image(vehicle_id: int, page: int) -> list[str]:
         d = store.latest_diagram(vehicle_id)
         if d is None:
             return []
-        if d["id"] not in image_cache:
-            pngs = dg.to_png_images(Path(d["path"]), d["mime"])
-            image_cache[d["id"]] = dg.b64(pngs)
-        return image_cache[d["id"]]
+        key = (d["id"], page)
+        if key not in image_cache:
+            image_cache[key] = dg.b64_page(Path(d["path"]), d["mime"], page)
+        return image_cache[key]
+
+    def page_text(vehicle_id: int, page: int) -> str:
+        d = store.latest_diagram(vehicle_id)
+        if d is None:
+            return ""
+        return dg.page_text(Path(d["path"]), d["mime"], page)
 
     # --- health & static -------------------------------------------------------
     @app.get("/api/health")
@@ -147,35 +161,47 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         return rec
 
     @app.get("/api/diagram/{diagram_id}/image")
-    def diagram_image(diagram_id: int) -> Response:
+    def diagram_image(diagram_id: int, page: int = 0) -> Response:
         try:
             d = store.get_diagram(diagram_id)
         except KeyError:
             raise HTTPException(404, "diagram not found") from None
-        pngs = dg.to_png_images(Path(d["path"]), d["mime"])
-        return Response(content=pngs[0], media_type="image/png")
+        png = dg.render_page(Path(d["path"]), d["mime"], page)
+        return Response(content=png, media_type="image/png")
 
     # --- AI actions ------------------------------------------------------------
-    def _require_images(vehicle_id: int) -> list[str]:
-        imgs = images_for_vehicle(vehicle_id)
+    def _require_page(vehicle_id: int, page: int) -> list[str]:
+        imgs = page_image(vehicle_id, page)
         if not imgs:
             raise HTTPException(400, "upload a diagram first")
         return imgs
 
     @app.post("/api/vehicles/{vehicle_id}/extract")
-    def extract_pinout(vehicle_id: int) -> dict:
-        imgs = _require_images(vehicle_id)
+    def extract_pinout(vehicle_id: int, body: ExtractBody) -> dict:
         d = store.latest_diagram(vehicle_id)
+        if d is None:
+            raise HTTPException(400, "upload a diagram first")
+        did = d["id"]
+        pages = range(d["pages"]) if body.all_pages else [body.page]
+        connectors: list[str] = []
         try:
-            result = extract.extract_pinout(client, imgs)
+            for page in pages:
+                imgs = page_image(vehicle_id, page)
+                result = extract.extract_pinout(client, imgs, page_text(vehicle_id, page))
+                if result["pins"]:
+                    store.merge_pinouts(vehicle_id, did, page, result["pins"])
+                    connectors += result["connectors"]
         except OllamaError as e:
             raise HTTPException(503, str(e)) from e
-        pinouts = store.replace_pinouts(vehicle_id, d["id"] if d else None, result["pins"])
-        return {"connector": result["connector"], "pinouts": pinouts}
+        return {
+            "connectors": sorted(set(connectors)),
+            "pinouts": store.list_pinouts(vehicle_id),
+            "pages_scanned": len(list(pages)),
+        }
 
     @app.post("/api/vehicles/{vehicle_id}/identify")
-    def identify_vehicle(vehicle_id: int) -> dict:
-        imgs = _require_images(vehicle_id)
+    def identify_vehicle(vehicle_id: int, body: ExtractBody) -> dict:
+        imgs = _require_page(vehicle_id, body.page)
         try:
             ident = extract.identify_vehicle(client, imgs)
         except OllamaError as e:
@@ -189,8 +215,8 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         )
 
     @app.post("/api/vehicles/{vehicle_id}/can-plan")
-    def can_plan(vehicle_id: int) -> dict:
-        imgs = _require_images(vehicle_id)
+    def can_plan(vehicle_id: int, body: ExtractBody) -> dict:
+        imgs = _require_page(vehicle_id, body.page)
         text = _pinout_text(store.list_pinouts(vehicle_id))
         try:
             plan = extract.can_bench_plan(client, text, imgs)
@@ -219,8 +245,11 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     # --- chat ------------------------------------------------------------------
     @app.post("/api/vehicles/{vehicle_id}/chat")
     def chat(vehicle_id: int, body: ChatBody) -> dict:
-        imgs = images_for_vehicle(vehicle_id)
+        imgs = page_image(vehicle_id, body.page)
         context = _vehicle_context(store, vehicle_id)
+        ptext = page_text(vehicle_id, body.page)
+        if ptext:
+            context += f"\n\nCURRENT PAGE ({body.page + 1}) TEXT LAYER:\n{ptext}"
         history = [
             ChatMessage(m["role"], m["content"])
             for m in store.list_messages(vehicle_id)

@@ -58,20 +58,28 @@
             <h3>📐 Wiring diagram</h3>
             <div id="dropzone" class="dropzone">
               <strong>Drop</strong> an image or PDF here, or click to choose.<br>
-              <span class="muted">PNG · JPG · PDF</span>
+              <span class="muted">PNG · JPG · PDF (multi-page supported)</span>
             </div>
             <input id="fileInput" type="file" accept="image/*,application/pdf" class="hidden">
+            <div id="pageNav" class="pagenav hidden">
+              <button class="ghost" onclick="ui.pageStep(-1)">◀</button>
+              <span>Page <input id="pageNum" type="number" min="1" value="1" onchange="ui.gotoPage(this.value-1)"> / <span id="pageTotal">1</span></span>
+              <button class="ghost" onclick="ui.pageStep(1)">▶</button>
+            </div>
             <div id="diagramPreview" class="diagram-preview" style="margin-top:14px"></div>
             <div class="row" style="margin-top:14px">
-              <button class="primary" onclick="ui.extract()" id="extractBtn" disabled>Extract pinout</button>
+              <button class="primary" onclick="ui.extract(false)" id="extractBtn" disabled>Extract this page</button>
+              <button onclick="ui.extract(true)" id="extractAllBtn" disabled>Extract all pages</button>
               <button onclick="ui.canPlan()" id="canPlanBtn" disabled>CAN wiring plan</button>
             </div>
+            <p class="muted" style="margin-top:8px">Tip: navigate to the page showing the connector you want, then “Extract this page”. “Extract all” scans the whole document (slower).</p>
           </div>
 
           <!-- pinout -->
           <div class="card">
-            <h3>🔌 Extracted pinout <span id="connectorName" class="muted"></span></h3>
-            <div id="pinoutTable"><p class="muted">No pinout yet. Upload a diagram and hit “Extract pinout”.</p></div>
+            <h3>🔌 Pinout <span id="connectorName" class="muted"></span></h3>
+            <div id="pinDetail" class="pin-detail hidden"></div>
+            <div id="pinoutTable"><p class="muted">No pinout yet. Upload a diagram and extract a page. Then click any pin to see its function.</p></div>
           </div>
         </div>
 

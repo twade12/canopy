@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS pinout (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
     diagram_id INTEGER REFERENCES diagram(id) ON DELETE SET NULL,
-    connector TEXT, pin TEXT, signal TEXT, wire_color TEXT, mating TEXT, notes TEXT,
+    connector TEXT, pin TEXT, signal TEXT, function TEXT, wire_color TEXT,
+    circuit TEXT, connects_to TEXT, mating TEXT, notes TEXT, page INTEGER,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS memory (
@@ -63,7 +64,16 @@ class Store:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a DB was first created (lightweight migration)."""
+        have = {r["name"] for r in self._conn.execute("PRAGMA table_info(pinout)")}
+        for col in ("function TEXT", "circuit TEXT", "connects_to TEXT", "page INTEGER"):
+            name = col.split()[0]
+            if name not in have:
+                self._conn.execute(f"ALTER TABLE pinout ADD COLUMN {col}")
 
     def close(self) -> None:
         self._conn.close()
@@ -134,24 +144,51 @@ class Store:
         return rows[0] if rows else None
 
     # --- pinouts ---------------------------------------------------------------
+    def _insert_pinout(
+        self, vehicle_id: int, diagram_id: int | None, page: int | None, r: dict
+    ) -> None:
+        self._conn.execute(
+            "INSERT INTO pinout (vehicle_id, diagram_id, connector, pin, signal, function,"
+            " wire_color, circuit, connects_to, mating, notes, page, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                vehicle_id, diagram_id,
+                str(r.get("connector", "")), str(r.get("pin", "")), str(r.get("signal", "")),
+                str(r.get("function", "")), str(r.get("wire_color", "")), str(r.get("circuit", "")),
+                str(r.get("connects_to", "")), str(r.get("mating", "")), str(r.get("notes", "")),
+                page, _now(),
+            ),
+        )
+
+    def merge_pinouts(
+        self, vehicle_id: int, diagram_id: int | None, page: int | None, rows: list[dict]
+    ) -> list[dict]:
+        """Upsert rows by (connector, pin) so multi-page extraction accumulates."""
+        for r in rows:
+            connector, pin = str(r.get("connector", "")), str(r.get("pin", ""))
+            if not pin:
+                continue
+            self._conn.execute(
+                "DELETE FROM pinout WHERE vehicle_id = ? AND connector = ? AND pin = ?",
+                (vehicle_id, connector, pin),
+            )
+            self._insert_pinout(vehicle_id, diagram_id, page, r)
+        self._conn.commit()
+        return self.list_pinouts(vehicle_id)
+
     def replace_pinouts(
-        self, vehicle_id: int, diagram_id: int | None, rows: list[dict]
+        self, vehicle_id: int, diagram_id: int | None, rows: list[dict], page: int | None = None
     ) -> list[dict]:
         """Replace this vehicle's pinouts with a freshly extracted set."""
         self._conn.execute("DELETE FROM pinout WHERE vehicle_id = ?", (vehicle_id,))
         for r in rows:
-            self._conn.execute(
-                "INSERT INTO pinout (vehicle_id, diagram_id, connector, pin, signal, wire_color,"
-                " mating, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (
-                    vehicle_id, diagram_id,
-                    str(r.get("connector", "")), str(r.get("pin", "")), str(r.get("signal", "")),
-                    str(r.get("wire_color", "")), str(r.get("mating", "")), str(r.get("notes", "")),
-                    _now(),
-                ),
-            )
+            self._insert_pinout(vehicle_id, diagram_id, page, r)
         self._conn.commit()
         return self.list_pinouts(vehicle_id)
+
+    def clear_pinouts(self, vehicle_id: int) -> None:
+        self._conn.execute("DELETE FROM pinout WHERE vehicle_id = ?", (vehicle_id,))
+        self._conn.commit()
 
     def list_pinouts(self, vehicle_id: int) -> list[dict]:
         rows = self._conn.execute(

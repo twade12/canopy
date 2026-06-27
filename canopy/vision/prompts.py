@@ -7,19 +7,53 @@ unverified parse. Mirrors the confirm-before-energize discipline in CLAUDE.md §
 
 from __future__ import annotations
 
-EXTRACT_SYSTEM = """You are an expert automotive wiring-diagram analyst for a CAN bench
-test station. You read a connector/pinout diagram image and extract its pinout EXACTLY as
-shown. Never invent pins, signals, or colors. If a field is not visible, leave it empty.
+SIGNAL_GLOSSARY = """Common automotive signal abbreviations (use to fill 'function'):
+- PWRGND / GND = power ground (chassis/battery ground)
+- VPWR = vehicle power (switched battery +12V); KAPPWR = keep-alive power (constant +12V)
+- B+ / KL30 = constant battery +12V; KL15 / IGN = switched ignition +12V
+- HS CAN + / CAN-H / CANH = high-speed CAN bus, CAN High
+- HS CAN - / CAN-L / CANL = high-speed CAN bus, CAN Low
+- MS CAN = medium-speed CAN; SWCAN = single-wire CAN
+- PCMRC / PCM Power Relay Control = control line energizing the PCM power relay
+- PCM Wake / WAKE = wake/enable input that powers up the module
+- ACCR = A/C clutch relay control output
+- GENCOM = generator/alternator communication; SMRC = starter motor relay control
+- START / SMS = starter / start signal; ISP = idle speed / injector
+- SIGRTN = sensor signal return (ground); 5V REF / VREF = sensor 5V reference
+- TACM = throttle actuator control motor; FSS/FCV = fuel/fan signals
+A wire code like "VDB04-WH bu" means circuit "VDB04", color WHITE with BLUE stripe
+(UPPERCASE = main color, lowercase = stripe). "GD113-BK ye" = circuit GD113, BLACK/yellow."""
 
-Return ONLY JSON of this shape:
+EXTRACT_SYSTEM = (
+    """You are an expert automotive wiring-diagram analyst for a CAN bench test station.
+You read ONE page of a connector/pinout diagram and extract every pin shown for the
+connector(s) on that page. You are given BOTH the page image AND its extracted text layer;
+the TEXT LAYER IS AUTHORITATIVE for pin numbers, signal labels, and wire codes — use it,
+and use the image to associate each pin number with its signal and the system it connects
+to. NEVER invent pins, signals, or colors. If a field is unknown, use "".
+
+Return ONLY JSON of this exact shape:
 {
-  "connector": "string (connector/component name or label, '' if unknown)",
-  "pins": [
-    {"pin": "1", "signal": "CAN-H", "wire_color": "", "mating": "", "notes": ""}
+  "connectors": [
+    {
+      "connector": "C1232B",
+      "pins": [
+        {"pin": "59", "signal": "HS CAN +", "function": "High-speed CAN bus (CAN High)",
+         "wire_color": "WH/bu", "circuit": "VDB04", "connects_to": "Module Communication Network"}
+      ]
+    }
   ]
 }
-Use the diagram's own labels. Mark CAN High as "CAN-H" and CAN Low as "CAN-L" when you can
-identify them; otherwise keep the diagram's wording. Keep pin numbers as strings."""
+Rules:
+- 'signal' = the label exactly as written on the diagram (e.g. "PWRGND", "HS CAN +", "ACCR").
+- 'function' = a short plain-language meaning of that pin (see glossary below).
+- 'circuit' = the circuit id from the wire code (e.g. "VDB04"); 'wire_color' = its color
+  (e.g. "WH/bu" for white/blue). 'connects_to' = the component/system the wire goes to.
+- Keep pin numbers as strings. Include ALL pins visible on the page.
+
+"""
+    + SIGNAL_GLOSSARY
+)
 
 IDENTIFY_SYSTEM = """You identify the vehicle from an automotive wiring/service diagram.
 Return ONLY JSON: {"vin": "", "year": "", "make": "", "model": "", "notes": ""}.

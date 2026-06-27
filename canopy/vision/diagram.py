@@ -1,7 +1,9 @@
-"""Diagram file handling: accept image or PDF, render to base64 PNG for the model.
+"""Diagram file handling: per-page render + embedded-text extraction.
 
-The multimodal model ingests images. PDFs are rendered page-by-page with PyMuPDF. Large
-images are downscaled so the model isn't overwhelmed and inference stays responsive.
+Multi-page service PDFs (e.g. a 24-page Ford wiring diagram) carry a reliable *text layer*
+with pin numbers, signal labels, circuit IDs, and colors. We feed that text to the model
+*alongside* the rendered page image — far more accurate than vision alone — and we work one
+page at a time, since each page is usually one connector view.
 """
 
 from __future__ import annotations
@@ -10,7 +12,8 @@ import base64
 import io
 from pathlib import Path
 
-MAX_DIM = 2000  # px; downscale longer edge to keep payloads/inference reasonable
+MAX_DIM = 2200  # px; downscale longer edge to keep payloads/inference reasonable
+PAGE_ZOOM = 2.4  # render scale for PDF pages (legibility of small pin labels)
 
 
 def is_pdf(filename: str, mime: str) -> bool:
@@ -30,33 +33,13 @@ def _downscale_png(data: bytes) -> bytes:
     """Return PNG bytes, downscaled if larger than MAX_DIM on the longer edge."""
     from PIL import Image
 
-    img = Image.open(io.BytesIO(data))
-    img = img.convert("RGB")
+    img = Image.open(io.BytesIO(data)).convert("RGB")
     if max(img.size) > MAX_DIM:
         scale = MAX_DIM / max(img.size)
         img = img.resize((int(img.width * scale), int(img.height * scale)))
     out = io.BytesIO()
     img.save(out, format="PNG")
     return out.getvalue()
-
-
-def render_pdf_pages(path: Path, *, max_pages: int = 4, zoom: float = 2.0) -> list[bytes]:
-    """Render up to `max_pages` PDF pages to PNG bytes at `zoom` scale."""
-    import fitz  # PyMuPDF
-
-    images: list[bytes] = []
-    with fitz.open(str(path)) as doc:
-        for page in doc[:max_pages]:
-            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-            images.append(_downscale_png(pix.tobytes("png")))
-    return images
-
-
-def to_png_images(path: Path, mime: str) -> list[bytes]:
-    """Normalize any uploaded diagram to a list of PNG byte buffers."""
-    if is_pdf(path.name, mime):
-        return render_pdf_pages(path)
-    return [_downscale_png(path.read_bytes())]
 
 
 def page_count(path: Path, mime: str) -> int:
@@ -68,6 +51,34 @@ def page_count(path: Path, mime: str) -> int:
     return 1
 
 
+def render_page(path: Path, mime: str, index: int = 0) -> bytes:
+    """Render a single page (PDF) or the image itself to downscaled PNG bytes."""
+    if is_pdf(path.name, mime):
+        import fitz
+
+        with fitz.open(str(path)) as doc:
+            index = max(0, min(index, doc.page_count - 1))
+            pix = doc[index].get_pixmap(matrix=fitz.Matrix(PAGE_ZOOM, PAGE_ZOOM))
+            return _downscale_png(pix.tobytes("png"))
+    return _downscale_png(path.read_bytes())
+
+
+def page_text(path: Path, mime: str, index: int = 0) -> str:
+    """Return the embedded text layer for a PDF page ('' for images or empty pages)."""
+    if not is_pdf(path.name, mime):
+        return ""
+    import fitz
+
+    with fitz.open(str(path)) as doc:
+        index = max(0, min(index, doc.page_count - 1))
+        return doc[index].get_text().strip()
+
+
 def b64(images: list[bytes]) -> list[str]:
     """Base64-encode PNG buffers for the Ollama image field."""
     return [base64.b64encode(buf).decode("ascii") for buf in images]
+
+
+def b64_page(path: Path, mime: str, index: int = 0) -> list[str]:
+    """Convenience: render one page and return it as a single-element base64 list."""
+    return b64([render_page(path, mime, index)])

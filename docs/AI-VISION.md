@@ -12,18 +12,28 @@ including the **confirm-before-energize** discipline: the AI proposes, the tech 
 
 ## What it does
 
-- **Ingest** an image (PNG/JPG) or **PDF** wiring diagram (multi-page PDFs are rendered and
-  the first pages are analyzed).
-- **Extract pinout** → a structured table (pin · signal · wire color · mating), saved to the
-  vehicle. CAN-H / CAN-L are highlighted.
+- **Ingest** an image (PNG/JPG) or a **multi-page PDF** wiring diagram. You navigate
+  page-by-page; each page is usually one connector view.
+- **Extract pinout** → for the page you’re on (or **all pages** at once). For PDFs the tool
+  feeds the model both the page image **and its embedded text layer** (authoritative for pin
+  numbers, signal labels, and wire codes), so pins map accurately. Results accumulate across
+  pages, upserted by connector + pin.
+- **Click any pin** → a detail panel shows its **function** in plain language, plus circuit
+  id, wire color, what it connects to, and the source page. CAN / power / ground pins are
+  color-coded.
 - **Identify vehicle** → pulls VIN / year / make / model from the diagram when printed.
 - **CAN wiring plan** → a step-by-step plan mapping module pins to station resources (KL30,
   KL15, GND, CAN-H, CAN-L), always led by a safety block.
 - **Chat** → ask things like *“How do I wire this to communicate over CAN?”* or *“How can I
-  simulate a test on the A/C clutch relay in this vehicle?”* The model sees the diagram plus
-  the vehicle’s saved facts and pinout.
+  simulate a test on the A/C clutch relay in this vehicle?”* The model sees the current page,
+  its text, and the vehicle’s saved facts + accumulated pinout.
 - **Memories** → save durable, vehicle-specific knowledge (manually, or auto-extracted from
   a chat answer). Accumulates a per-vehicle knowledge base over time.
+
+### Example (2016 F-250 6.7L service diagram)
+On the CAN page the tool correctly extracts `pin 59 → HS CAN + (CAN High)`,
+`pin 43 → HS CAN - (CAN Low)`, and `pin 02 → ACCR (A/C clutch relay control →
+Manual Climate Control System)` — each clickable for its full function, circuit, and color.
 
 ---
 
@@ -60,12 +70,15 @@ Open the URL in a browser. The status pill (top-right) turns green when the mode
 
 1. **+ New vehicle** → it appears in the sidebar.
 2. **Drop a wiring-diagram** image or PDF onto the diagram card.
-3. **Extract pinout** → review the table. (CAN-H/L are highlighted in cyan.)
-4. **Identify from diagram** → auto-fills VIN/year/make/model when present; edit + **Save**.
-5. **CAN wiring plan** → generates a connection plan + safety block.
-6. **Chat** → use a suggested chip or type your own question. Toggle *“Save learned facts to
+3. **Navigate** with ◀ ▶ (or type a page number) to the page showing the connector you want.
+4. **Extract this page** → pins appear, grouped by connector. Or **Extract all pages** to
+   scan the whole document (slower — one model pass per page).
+5. **Click any pin** → see its function, circuit, color, destination, and source page.
+6. **Identify from diagram** → auto-fills VIN/year/make/model when present; edit + **Save**.
+7. **CAN wiring plan** → generates a connection plan + safety block from the saved pinout.
+8. **Chat** → use a suggested chip or type your own question. Toggle *“Save learned facts to
    memory”* to let the model distill durable facts after each answer.
-7. **Memories** → add your own, or review/delete what was saved. These feed back into every
+9. **Memories** → add your own, or review/delete what was saved. These feed back into every
    future chat for that vehicle.
 
 ---

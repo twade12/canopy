@@ -13,7 +13,7 @@ const api = {
 };
 async function err(r) { let d; try { d = (await r.json()).detail; } catch { d = r.statusText; } return new Error(d || ('HTTP ' + r.status)); }
 
-const state = { vehicles: [], current: null };
+const state = { vehicles: [], current: null, page: 0, pageTotal: 1 };
 
 // minimal, safe markdown -> html
 function md(t) {
@@ -66,9 +66,11 @@ const ui = {
 
   async select(id) {
     state.current = await api.get('/api/vehicles/' + id);
+    state.page = 0;
     el('emptyState').classList.add('hidden');
     el('workspace').classList.remove('hidden');
     el('planCard').classList.add('hidden');
+    el('pinDetail').classList.add('hidden');
     this.render();
     await this.loadVehicles();
   },
@@ -83,17 +85,77 @@ const ui = {
   renderDiagram() {
     const d = (state.current.diagrams || [])[0];
     const ok = !!d;
-    el('extractBtn').disabled = !ok; el('canPlanBtn').disabled = !ok;
-    el('diagramPreview').innerHTML = ok ? `<img src="/api/diagram/${d.id}/image?t=${Date.now()}" alt="diagram">` : '';
+    el('extractBtn').disabled = !ok; el('extractAllBtn').disabled = !ok; el('canPlanBtn').disabled = !ok;
+    state.pageTotal = ok ? (d.pages || 1) : 1;
+    state.diagramId = ok ? d.id : null;
+    const nav = el('pageNav');
+    if (ok && state.pageTotal > 1) {
+      nav.classList.remove('hidden');
+      el('pageTotal').textContent = state.pageTotal;
+      el('pageNum').max = state.pageTotal;
+      el('pageNum').value = state.page + 1;
+    } else { nav.classList.add('hidden'); }
+    el('diagramPreview').innerHTML = ok
+      ? `<img src="/api/diagram/${d.id}/image?page=${state.page}&t=${Date.now()}" alt="diagram page ${state.page + 1}">`
+      : '';
+  },
+
+  pageStep(delta) { this.gotoPage(state.page + delta); },
+  gotoPage(n) {
+    n = Math.max(0, Math.min(state.pageTotal - 1, parseInt(n) || 0));
+    state.page = n; this.renderDiagram();
+  },
+
+  sigClass(s) {
+    s = (s || '').toLowerCase();
+    if (/can[\s-]?(h|hi|high|l|lo|low|\+|-)|^can/.test(s)) return 'can';
+    if (/pwr|power|vpwr|kappwr|b\+|\+12|batt|kl30|kl15|ign/.test(s)) return 'pwr';
+    if (/gnd|ground|pwrgnd|sigrtn|return/.test(s)) return 'gnd';
+    return '';
   },
 
   renderPinouts(pins) {
-    el('connectorName').textContent = pins && pins.length && pins[0].connector ? '· ' + pins[0].connector : '';
-    if (!pins || !pins.length) { el('pinoutTable').innerHTML = '<p class="muted">No pinout yet.</p>'; return; }
-    const isCan = s => /can[\s-]?(h|hi|high|l|lo|low)/i.test(s || '');
-    el('pinoutTable').innerHTML = `<table><thead><tr><th>Pin</th><th>Signal</th><th>Color</th><th>Mating</th></tr></thead><tbody>${
-      pins.map(p => `<tr><td>${esc(p.pin)}</td><td class="${isCan(p.signal) ? 'signal-can' : ''}">${esc(p.signal)}</td><td>${esc(p.wire_color)}</td><td>${esc(p.mating)}</td></tr>`).join('')
-    }</tbody></table>`;
+    state.current.pinouts = pins || [];
+    const conns = [...new Set((pins || []).map(p => p.connector || ''))];
+    el('connectorName').textContent = conns.filter(Boolean).length ? '· ' + conns.filter(Boolean).join(', ') : '';
+    if (!pins || !pins.length) { el('pinoutTable').innerHTML = '<p class="muted">No pinout yet. Navigate to a connector page and click “Extract this page”.</p>'; return; }
+    let html = '';
+    for (const conn of conns) {
+      const group = pins.filter(p => (p.connector || '') === conn);
+      if (conns.length > 1 || conn) html += `<div class="conn-group">${esc(conn || 'Connector')}</div>`;
+      html += `<table><thead><tr><th>Pin</th><th>Signal</th><th>Function</th><th>Color</th></tr></thead><tbody>${
+        group.map((p, i) => {
+          const sc = this.sigClass(p.signal);
+          const idx = pins.indexOf(p);
+          return `<tr class="pin-row" data-i="${idx}" onclick="ui.showPin(${idx})">
+            <td class="pin-num ${sc}">${esc(p.pin)}</td>
+            <td class="${sc === 'can' ? 'signal-can' : sc === 'pwr' ? 'signal-pwr' : sc === 'gnd' ? 'signal-gnd' : ''}">${esc(p.signal)}</td>
+            <td class="muted">${esc(p.function || '')}</td>
+            <td>${esc(p.wire_color || '')}</td></tr>`;
+        }).join('')
+      }</tbody></table>`;
+    }
+    el('pinoutTable').innerHTML = html;
+  },
+
+  showPin(idx) {
+    const p = state.current.pinouts[idx]; if (!p) return;
+    document.querySelectorAll('.pin-row').forEach(r => r.classList.toggle('sel', r.dataset.i == idx));
+    const row = (label, val) => val ? `<div>${label}</div><div><b>${esc(val)}</b></div>` : '';
+    el('pinDetail').innerHTML = `
+      <span class="pd-close" onclick="el('pinDetail').classList.add('hidden')">✕</span>
+      <div class="pd-pin">Pin ${esc(p.pin)}</div>
+      <div class="pd-sig">${esc(p.signal || '(no label)')}</div>
+      <div class="pd-func">${esc(p.function || 'No plain-language function recorded.')}</div>
+      <div class="pd-grid">
+        ${row('Connector', p.connector)}
+        ${row('Circuit', p.circuit)}
+        ${row('Wire color', p.wire_color)}
+        ${row('Connects to', p.connects_to)}
+        ${row('Diagram page', p.page != null ? (p.page + 1) : '')}
+        ${row('Notes', p.notes)}
+      </div>`;
+    el('pinDetail').classList.remove('hidden');
   },
 
   renderMemories(mems) {
@@ -147,23 +209,27 @@ const ui = {
     try { return await fn(); } catch (e) { alert(e.message); } finally { btn.disabled = false; btn.innerHTML = old; }
   },
 
-  async extract() {
-    await this.withBusy(el('extractBtn'), 'reading…', async () => {
-      const r = await api.send(`/api/vehicles/${state.current.id}/extract`, 'POST');
+  async extract(allPages) {
+    const btn = allPages ? el('extractAllBtn') : el('extractBtn');
+    await this.withBusy(btn, allPages ? `scanning ${state.pageTotal} pages…` : 'reading page…', async () => {
+      const r = await api.send(`/api/vehicles/${state.current.id}/extract`, 'POST', { page: state.page, all_pages: !!allPages });
       this.renderPinouts(r.pinouts);
     });
   },
 
   async identify() {
     await this.withBusy(el('identifyBtn'), 'identifying…', async () => {
-      await api.send(`/api/vehicles/${state.current.id}/identify`, 'POST');
-      await this.select(state.current.id);
+      const v = await api.send(`/api/vehicles/${state.current.id}/identify`, 'POST', { page: state.page });
+      Object.assign(state.current, v);
+      el('vin').value = v.vin || ''; el('year').value = v.year || ''; el('make').value = v.make || ''; el('model').value = v.model || '';
+      el('vehTitle').textContent = v.label || [v.year, v.make, v.model].filter(Boolean).join(' ') || 'Vehicle';
+      this.loadVehicles();
     });
   },
 
   async canPlan() {
     await this.withBusy(el('canPlanBtn'), 'planning…', async () => {
-      const r = await api.send(`/api/vehicles/${state.current.id}/can-plan`, 'POST');
+      const r = await api.send(`/api/vehicles/${state.current.id}/can-plan`, 'POST', { page: state.page });
       el('planCard').classList.remove('hidden');
       el('planOutput').innerHTML = md(r.plan);
     });
@@ -180,7 +246,7 @@ const ui = {
     box.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="pending"><span class="spinner"></span> thinking…</div>`);
     box.scrollTop = box.scrollHeight;
     try {
-      const r = await api.send(`/api/vehicles/${state.current.id}/chat`, 'POST', { message: q, save_memories: el('saveMem').checked });
+      const r = await api.send(`/api/vehicles/${state.current.id}/chat`, 'POST', { message: q, save_memories: el('saveMem').checked, page: state.page });
       el('pending').remove();
       box.insertAdjacentHTML('beforeend', `<div class="msg assistant"><div class="md">${md(r.reply)}</div></div>`);
       box.scrollTop = box.scrollHeight;
