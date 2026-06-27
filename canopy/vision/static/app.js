@@ -597,7 +597,7 @@ const ui = {
     const sel = state.pcbSel != null ? comps[state.pcbSel] : null;
     const handles = ['nw', 'ne', 'sw', 'se'].map(h => `<span class="handle ${h}"></span>`).join('');
     const boxes = comps.map((p, i) => { const [x0, y0, x1, y1] = p.box; const on = i === state.pcbSel;
-      return `<div class="pcb-box ${on ? 'sel' : 'dim'}${edit ? ' editing' : ''}" data-idx="${i}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})">${(on || edit) ? `<span class="lbl">${nm(p)}</span>` : ''}${edit ? handles : ''}</div>`; }).join('');
+      return `<div class="pcb-box ${on ? 'sel' : 'dim'}${edit ? ' editing' : ''}" data-idx="${i}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%" onclick="ui.selectPcb(${i})">${(on || edit) ? `<span class="lbl">${nm(p)}</span>` : ''}${edit ? handles + `<span class="pcb-del" title="Delete box" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();ui.pcbDeleteComponent(${p.id})">${svg('close')}</span>` : ''}</div>`; }).join('');
     const z = state.pcbZoom || 1;
     const photos = state.pcbPhotos || [];
     const strip = photos.length > 1 ? `<div class="pcb-photos">${photos.map((ph, i) => `<div class="pcb-thumb ${ph.id === state.pcbPhotoId ? 'sel' : ''}" title="${esc(ph.note || 'board photo')} — ${ph.count} parts" onclick="ui.pcbSelectPhoto(${ph.id})"><img src="/api/attachment/${ph.id}/image" loading="lazy"><span class="pt-n">${photos.length - i}</span></div>`).join('')}</div>` : '';

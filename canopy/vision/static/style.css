@@ -178,6 +178,9 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .pcb-box .handle.ne { right: -6px; top: -6px; cursor: nesw-resize; }
 .pcb-box .handle.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
 .pcb-box .handle.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.pcb-box .pcb-del { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; background: #ef4444; color: #fff; border-radius: 50%; cursor: pointer; z-index: 5; border: 1.5px solid #fff; }
+.pcb-box .pcb-del svg { width: 11px; height: 11px; }
+.pcb-box .pcb-del:hover { background: #dc2626; }
 .pcb-side { width: 290px; flex: none; display: flex; flex-direction: column; min-height: 0; }
 .pcb-list { display: flex; flex-direction: column; gap: 5px; overflow-y: auto; flex: 1; min-height: 0; padding-right: 2px; }
 .pcb-item { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 13px; flex: none; }
