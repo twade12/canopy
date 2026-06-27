@@ -12,6 +12,7 @@ import re
 
 from canopy.vision.ollama_client import ChatMessage, OllamaClient
 from canopy.vision.prompts import (
+    ASSISTANT_SYSTEM,
     CAN_PLAN_SYSTEM,
     CHAT_SYSTEM,
     EXTRACT_SYSTEM,
@@ -19,6 +20,14 @@ from canopy.vision.prompts import (
     MEMORY_SUGGEST_SYSTEM,
     TAGS_SYSTEM,
 )
+
+
+def assistant_stream(client: OllamaClient, question: str, *, context: str, history: list):
+    """Stream a global cross-vehicle assistant answer (no diagram image)."""
+    messages = [ChatMessage("system", ASSISTANT_SYSTEM + "\n\n" + context)]
+    messages.extend(history)
+    messages.append(ChatMessage("user", question))
+    yield from client.chat_stream(messages, temperature=0.3)
 
 
 def cosine(a: list[float], b: list[float]) -> float:

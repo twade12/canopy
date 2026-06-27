@@ -256,6 +256,22 @@ class Store:
         self._conn.execute("DELETE FROM memory WHERE id = ?", (memory_id,))
         self._conn.commit()
 
+    def all_memories(self) -> list[dict]:
+        """Every memory across all projects, with its project label (for the global assistant)."""
+        rows = self._conn.execute(
+            "SELECT m.id, m.vehicle_id, m.kind, m.content, m.embedding, m.created_at,"
+            " v.label AS project, v.make, v.model, v.year"
+            " FROM memory m JOIN vehicle v ON v.id = m.vehicle_id ORDER BY m.created_at DESC"
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = self._memory_row(r)
+            d["project"] = r["project"] or " ".join(
+                filter(None, [r["year"], r["make"], r["model"]])
+            ) or f"project {r['vehicle_id']}"
+            out.append(d)
+        return out
+
     # --- tags ------------------------------------------------------------------
     def add_tag(self, vehicle_id: int, tag: str) -> list[str]:
         tag = tag.strip()

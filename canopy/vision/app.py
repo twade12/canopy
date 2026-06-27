@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from canopy.vision import bench as benchmod
 from canopy.vision import diagram as dg
 from canopy.vision import extract
 from canopy.vision.api_reference import API_REFERENCE
@@ -51,6 +52,40 @@ class ExtractBody(BaseModel):
 
 class TagBody(BaseModel):
     tag: str
+
+
+class AssistantBody(BaseModel):
+    message: str
+    history: list[dict] = []
+
+
+class ConnectBody(BaseModel):
+    interface: str = "socketcan"
+    channel: str = "can0"
+    bitrate: int = 500000
+    fd: bool = False
+
+
+class SendFrameBody(BaseModel):
+    id: str
+    data: str = ""
+    extended: bool = False
+
+
+class UdsBody(BaseModel):
+    request_id: str = "0x7E0"
+    response_id: str = "0x7E8"
+    payload: str = ""  # hex, e.g. "22F190"
+
+
+class PingBody(BaseModel):
+    request_id: str = "0x7E0"
+    response_id: str = "0x7E8"
+
+
+def _parse_id(v: str) -> int:
+    v = v.strip()
+    return int(v, 16) if v.lower().startswith("0x") else int(v, 16)
 
 
 def _pinout_text(pinouts: list[dict]) -> str:
@@ -416,6 +451,97 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def api_reference() -> dict:
         """Curated endpoint reference for the in-app API docs (also see /api/docs)."""
         return {"openapi": "/openapi.json", "swagger": "/api/docs", "groups": API_REFERENCE}
+
+    # --- global cross-vehicle assistant ----------------------------------------
+    def assistant_context(question: str, k: int = 10) -> str:
+        mems = store.all_memories()
+        qvec = embed(question)
+        have = [(m["embedding"], m) for m in mems if m["embedding"]]
+        chosen = extract.rank_by_similarity(qvec, have, k=k) if (qvec and have) else mems[:k]
+        lines = [f"- [{m['project']}] {m['content']}" for m in chosen]
+        projects = store.list_vehicles()
+        summary = ", ".join(
+            f"{v['label'] or 'project'} ({', '.join(v.get('tags', [])[:4])})" for v in projects[:12]
+        )
+        return (
+            f"KNOWN PROJECTS: {summary or '(none yet)'}\n\n"
+            f"RELEVANT ACCUMULATED MEMORIES:\n" + ("\n".join(lines) if lines else "- (none yet)")
+        )
+
+    @app.post("/api/assistant/chat/stream")
+    def assistant_stream(body: AssistantBody) -> StreamingResponse:
+        context = assistant_context(body.message)
+        history = [
+            ChatMessage(m.get("role", "user"), m.get("content", ""))
+            for m in body.history if m.get("role") in ("user", "assistant")
+        ][-8:]
+
+        def gen():
+            parts: list[str] = []
+            try:
+                for chunk in extract.assistant_stream(
+                    client, body.message, context=context, history=history
+                ):
+                    parts.append(chunk)
+                    yield f"event: token\ndata: {json.dumps(chunk)}\n\n"
+            except OllamaError as e:
+                yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
+                return
+            yield f"event: done\ndata: {json.dumps({})}\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    # --- USB-to-CAN bench ------------------------------------------------------
+    bench = benchmod.BenchManager()
+
+    @app.get("/api/can/interfaces")
+    def can_interfaces() -> list[dict]:
+        return benchmod.list_can_interfaces()
+
+    @app.get("/api/can/status")
+    def can_status() -> dict:
+        return bench.status()
+
+    @app.post("/api/can/connect")
+    def can_connect(body: ConnectBody) -> dict:
+        try:
+            return bench.connect(body.interface, body.channel, body.bitrate, body.fd)
+        except Exception as e:
+            raise HTTPException(400, f"connect failed: {e}") from e
+
+    @app.post("/api/can/disconnect")
+    def can_disconnect() -> dict:
+        return bench.disconnect()
+
+    @app.get("/api/can/frames")
+    def can_frames(since: int = 0) -> dict:
+        return {"frames": bench.recent_frames(since), "status": bench.status()}
+
+    @app.post("/api/can/send")
+    def can_send(body: SendFrameBody) -> dict:
+        try:
+            data = bytes.fromhex(body.data.replace(" ", "")) if body.data else b""
+            return bench.send_frame(_parse_id(body.id), data, extended=body.extended)
+        except Exception as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/can/ping")
+    def can_ping(body: PingBody) -> dict:
+        try:
+            return bench.ping_ecu(_parse_id(body.request_id), _parse_id(body.response_id))
+        except Exception as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/can/uds")
+    def can_uds(body: UdsBody) -> dict:
+        try:
+            payload = bytes.fromhex(body.payload.replace(" ", ""))
+            if not payload:
+                raise ValueError("empty UDS payload")
+            req, rsp = _parse_id(body.request_id), _parse_id(body.response_id)
+            return bench.uds_request(req, rsp, payload)
+        except Exception as e:
+            raise HTTPException(400, str(e)) from e
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

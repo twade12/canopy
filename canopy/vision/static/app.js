@@ -15,14 +15,18 @@ const ICON = {
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', warn: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
   edit: '<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
+  assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
+  bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
 };
 const svg = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON[n] || ''}</svg>`;
 const VIEWS = [
   { key: 'diagram', label: 'Diagram', icon: 'diagram' }, { key: 'pinout', label: 'Pinout', icon: 'pinout' },
   { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
+  { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'api', label: 'API', icon: 'api' },
 ];
+const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench']);  // usable without a selected project
 const meta = k => VIEWS.find(v => v.key === k) || { label: k, icon: 'diagram' };
 
 const api = {
@@ -111,12 +115,24 @@ function renderNode(node) {
 function attachResizer(rz, split, i, a, b) {
   rz.onmousedown = e => { e.preventDefault(); const horiz = split.dir === 'row'; const start = horiz ? e.clientX : e.clientY;
     const aS = horiz ? a.offsetWidth : a.offsetHeight, bS = horiz ? b.offsetWidth : b.offsetHeight;
+    document.body.style.userSelect = 'none'; document.body.style.cursor = horiz ? 'col-resize' : 'row-resize';
     const mv = ev => { const d = (horiz ? ev.clientX : ev.clientY) - start; const na = aS + d, nb = bS - d; if (na < 80 || nb < 80) return; split.sizes[i] = na; split.sizes[i + 1] = nb; a.style.flex = `${na} 1 0`; b.style.flex = `${nb} 1 0`; };
-    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); saveDock(); };
+    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); document.body.style.userSelect = ''; document.body.style.cursor = ''; saveDock(); };
     document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up); };
 }
 function renderGroup(group) {
   const g = document.createElement('div'); g.className = 'group'; g.dataset.gid = group.id;
+  const body = document.createElement('div'); body.className = 'panel-content'; body.style.position = 'relative';
+  const ov = document.createElement('div'); ov.className = 'dropzone-edge'; const zone = document.createElement('div'); zone.className = 'zone'; ov.appendChild(zone); body.appendChild(ov);
+  const content = document.createElement('div'); content.className = 'pc-content'; body.appendChild(content);
+  g.ondragover = e => { if (!state.drag) return; e.preventDefault(); showZone(zone, computeZone(g.getBoundingClientRect(), e.clientX, e.clientY)); };
+  g.ondragleave = e => { if (!g.contains(e.relatedTarget)) zone.style.display = 'none'; };
+  g.ondrop = e => { if (!state.drag) return; e.preventDefault(); const side = computeZone(g.getBoundingClientRect(), e.clientX, e.clientY); zone.style.display = 'none'; ui.handleDrop(group, state.drag.view, side); };
+  g.appendChild(buildTabstrip(group)); g.appendChild(body);
+  renderViewInto(group.active, content);
+  return g;
+}
+function buildTabstrip(group) {
   const strip = document.createElement('div'); strip.className = 'tabstrip';
   group.tabs.forEach(v => { const tab = document.createElement('div'); tab.className = 'tab' + (v === group.active ? ' active' : ''); tab.draggable = true;
     tab.innerHTML = `${svg(meta(v).icon)} ${meta(v).label} <span class="x">${svg('close')}</span>`;
@@ -125,15 +141,7 @@ function renderGroup(group) {
     tab.ondragend = () => { tab.classList.remove('dragging'); state.drag = null; }; strip.appendChild(tab); });
   const hidden = VIEWS.filter(v => !placedViews(state.dock).has(v.key));
   if (hidden.length) { const add = document.createElement('div'); add.className = 'tab'; add.innerHTML = svg('plus'); add.title = 'Add a panel'; add.onclick = e => addMenu(e, group, hidden); strip.appendChild(add); }
-  const body = document.createElement('div'); body.className = 'panel-content'; body.style.position = 'relative';
-  const ov = document.createElement('div'); ov.className = 'dropzone-edge'; const zone = document.createElement('div'); zone.className = 'zone'; ov.appendChild(zone); body.appendChild(ov);
-  const content = document.createElement('div'); content.className = 'pc-content'; body.appendChild(content);
-  g.ondragover = e => { if (!state.drag) return; e.preventDefault(); showZone(zone, computeZone(g.getBoundingClientRect(), e.clientX, e.clientY)); };
-  g.ondragleave = e => { if (!g.contains(e.relatedTarget)) zone.style.display = 'none'; };
-  g.ondrop = e => { if (!state.drag) return; e.preventDefault(); const side = computeZone(g.getBoundingClientRect(), e.clientX, e.clientY); zone.style.display = 'none'; ui.handleDrop(group, state.drag.view, side); };
-  g.appendChild(strip); g.appendChild(body);
-  renderViewInto(group.active, content);
-  return g;
+  return strip;
 }
 function addMenu(e, group, hidden) { e.stopPropagation(); const m = document.createElement('div'); m.className = 'addmenu';
   m.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:5px;box-shadow:var(--shadow);z-index:1000`;
@@ -142,9 +150,25 @@ function addMenu(e, group, hidden) { e.stopPropagation(); const m = document.cre
   const r = m.getBoundingClientRect(); m.style.left = Math.max(6, Math.min(e.clientX, innerWidth - r.width - 8)) + 'px'; m.style.top = Math.max(6, Math.min(e.clientY, innerHeight - r.height - 8)) + 'px';
   setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
 }
-function rerenderGroup(group) { const gEl = document.querySelector(`.group[data-gid="${group.id}"]`); if (!gEl) { renderDock(); return; } gEl.replaceWith(renderGroup(group)); }
+function rerenderGroup(group) {
+  // Update tab bar + content IN PLACE — never replace the .group element, or we'd lose its
+  // inline flex sizing and the resizers' element references (which broke layout/resize).
+  const gEl = document.querySelector(`.group[data-gid="${group.id}"]`); if (!gEl) { renderDock(); return; }
+  gEl.querySelector('.tabstrip').replaceWith(buildTabstrip(group));
+  renderViewInto(group.active, gEl.querySelector('.pc-content'));
+}
 function rerenderView(v) { const g = groupOfView(state.dock, v); if (g && g.active === v) { const c = document.querySelector(`.group[data-gid="${g.id}"] .pc-content`); if (c) renderViewInto(v, c); } }
 function contentOf(v) { const g = groupOfView(state.dock, v); return g ? document.querySelector(`.group[data-gid="${g.id}"] .pc-content`) : null; }
+
+// ---------- AI activity toast ----------
+const aiToast = {
+  show(label) { const t = el('aiToast'); t.innerHTML = `<div class="tt-head">${svg('assistant')} <span>${esc(label)}</span></div><div class="tt-body" id="toastBody"></div>`; t.classList.remove('hidden'); if (this._t) clearTimeout(this._t); },
+  body(text) { const b = el('toastBody'); if (b) b.textContent = text; },
+  append(text) { const b = el('toastBody'); if (b) b.textContent = (b.textContent + text).slice(-600); },
+  label(text) { const h = el('aiToast').querySelector('.tt-head span'); if (h) h.textContent = text; },
+  done(label) { const t = el('aiToast'); const h = t.querySelector('.tt-head'); if (h) h.innerHTML = `${svg('bolt')} <span>${esc(label || 'Done')}</span>`; this.hide(2200); },
+  hide(delay = 0) { if (this._t) clearTimeout(this._t); this._t = setTimeout(() => el('aiToast').classList.add('hidden'), delay); },
+};
 
 // ---------- modal ----------
 function showModal(node) { closeModal(); const bd = document.createElement('div'); bd.className = 'modal-backdrop'; bd.id = 'modalBackdrop'; bd.appendChild(node); bd.addEventListener('mousedown', e => { if (e.target === bd) closeModal(); }); document.body.appendChild(bd); return bd; }
@@ -152,7 +176,8 @@ function closeModal() { const b = el('modalBackdrop'); if (b) b.remove(); }
 
 function renderViewInto(view, c) {
   if (!c) return;
-  if (view === 'api') return ui.viewApi(c);
+  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench };
+  if (globals[view]) return globals[view].call(ui, c);
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
   ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, memories: ui.viewMemories, record: ui.viewRecord })[view].call(ui, c);
 }
@@ -163,6 +188,7 @@ const ui = {
     document.documentElement.dataset.theme = state.theme;
     el('sidebarToggle').innerHTML = svg('menu'); el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon');
     el('resetBtn').innerHTML = svg('reset'); el('apiBtn').innerHTML = svg('api'); el('newRecBtn').innerHTML = svg('plus'); el('searchIcon').innerHTML = svg('search');
+    el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench');
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
     state.dock = loadDock();
     this.checkHealth(); await this.loadRecords();
@@ -303,7 +329,7 @@ const ui = {
   async runPipeline() {
     const id = state.current.id, g = x => el(x) ? el(x).value.trim() : '';
     const status = el('mStatus'), go = el('mGo'); if (go) go.disabled = true;
-    const set = t => { if (status) status.innerHTML = `<span class="spinner"></span> ${esc(t)}`; };
+    const set = t => { if (status) status.innerHTML = `<span class="spinner"></span> ${esc(t)}`; aiToast.show(t); };
     try {
       set('saving details…');
       await api.send('/api/vehicles/' + id, 'PATCH', { label: g('mLabel'), vin: g('mVin'), year: g('mYear'), make: g('mMake'), model: g('mModel') });
@@ -312,10 +338,95 @@ const ui = {
       if (el('optPin') && el('optPin').checked) { const all = el('optPinScope').value === 'all'; set(all ? `extracting pinout (all ${state.pageTotal} pages)…` : 'extracting pinout…'); await api.send(`/api/vehicles/${id}/extract`, 'POST', { page: state.page, all_pages: all }); }
       if (el('optPlan') && el('optPlan').checked) { set('generating wiring plan…'); const r = await api.send(`/api/vehicles/${id}/can-plan`, 'POST', { page: state.page }); state.plan = r.plan; }
       if (el('optMem') && el('optMem').checked) { set('extracting memories…'); await api.send(`/api/vehicles/${id}/extract-memories`, 'POST', { page: state.page }); }
-      closeModal(); state.current = await api.get('/api/vehicles/' + id); await this.loadRecords(); renderDock();
-    } catch (e) { if (status) status.innerHTML = `<span class="warn">${esc(e.message)}</span>`; if (go) go.disabled = false; }
+      aiToast.done('Project ready'); closeModal(); state.current = await api.get('/api/vehicles/' + id); await this.loadRecords(); renderDock();
+    } catch (e) { aiToast.done('Error'); if (status) status.innerHTML = `<span class="warn">${esc(e.message)}</span>`; if (go) go.disabled = false; }
   },
-  async busy(id, label, fn) { const b = el(id); const old = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.innerHTML = `<span class="spinner"></span> ${label}`; } try { return await fn(); } catch (e) { alert(e.message); } finally { if (b) { b.disabled = false; b.innerHTML = old; } } },
+
+  // ---------- global assistant ----------
+  viewAssistant(c) {
+    const msgs = state.assistantMsgs || [];
+    c.innerHTML = `<div class="chat"><div class="chips">
+        <span class="chip" onclick="ui.askAssistant('How do I confirm CAN connectivity to an ECU on the bench?')">Confirm CAN connectivity</span>
+        <span class="chip" onclick="ui.askAssistant('How can I verify the A/C clutch relay output from an ECM over CAN?')">Test A/C clutch relay</span>
+        <span class="chip" onclick="ui.askAssistant('Compare the CAN bus pins across the vehicles I have analyzed.')">Compare CAN pins</span></div>
+      <div class="messages" id="aMsgs">${msgs.map(m => `<div class="msg ${m.role}"><div class="md">${md(m.content)}</div></div>`).join('') || '<div class="empty">Ask anything. I draw on the accumulated knowledge from every project you have analyzed.</div>'}</div>
+      <div class="chat-input"><textarea id="aIn" placeholder="Ask across all projects…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ui.sendAssistant();}"></textarea><button class="primary" onclick="ui.sendAssistant()">Send</button></div></div>`;
+    const m = el('aMsgs'); if (m) m.scrollTop = m.scrollHeight;
+  },
+  askAssistant(q) { ensureView('assistant'); const i = el('aIn'); if (i) i.value = q; this.sendAssistant(q); },
+  async sendAssistant(forced) {
+    const input = el('aIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q) return; if (input) input.value = '';
+    state.assistantMsgs = state.assistantMsgs || [];
+    const box = el('aMsgs'); if (box && box.querySelector('.empty')) box.innerHTML = '';
+    box.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div></div>`);
+    const aId = 'as' + Date.now(); box.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`); box.scrollTop = box.scrollHeight;
+    const history = state.assistantMsgs.slice(-8); state.assistantMsgs.push({ role: 'user', content: q }); let full = '';
+    aiToast.show('Assistant thinking…');
+    await this.stream('/api/assistant/chat/stream', { message: q, history },
+      tok => { full += tok; aiToast.append(tok); const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); const b = el('aMsgs'); if (b) b.scrollTop = b.scrollHeight; } },
+      () => { aiToast.done('Answered'); const m = el(aId + '-md'); if (m) m.classList.remove('cursor-blink'); state.assistantMsgs.push({ role: 'assistant', content: full }); },
+      e => { aiToast.done('Error'); const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e)}</span>`; });
+  },
+
+  // ---------- CAN bench ----------
+  viewBench(c) {
+    const acts = (state.current?.pinouts || []).filter(p => /relay|ctrl|control|sol|actuat|accr|output/i.test(p.signal || p.function || ''));
+    const hints = acts.length ? `<div class="muted" style="margin-top:8px">Actuator-like pins on <b>${esc(state.current.label || 'this project')}</b>: ${acts.slice(0, 8).map(p => `<span class="tagchip">pin ${esc(p.pin)} ${esc(p.signal)}</span>`).join(' ')}<br>Commanding these needs the ECU's specific UDS routine/output-control id (service 0x2F/0x31).</div>` : '';
+    c.innerHTML = `
+      <div class="bench-status" id="benchStatus"><span class="dot"></span> checking…</div>
+      <div class="bench-section"><h4>${svg('link')} Connection</h4>
+        <div class="row"><select id="bIface" style="flex:1"></select><input id="bChannel" placeholder="can0" value="vcan0" style="width:110px"><input id="bBitrate" value="500000" style="width:95px" title="bitrate">
+          <button class="primary" id="bConnectBtn" onclick="ui.benchConnect()">Connect</button><button onclick="ui.benchDisconnect()">Disconnect</button></div>
+        <div class="muted" style="margin-top:6px">Pick a SocketCAN device (USB-to-CAN adapter or vcan0), or 'virtual' for a dry run.</div></div>
+      <div class="bench-section"><h4>Probe ECU</h4>
+        <div class="row"><input id="bReq" value="0x7E0" style="width:90px" title="request id"><input id="bRsp" value="0x7E8" style="width:90px" title="response id"><button class="primary" onclick="ui.benchPing()">Ping &amp; confirm connectivity</button></div>
+        <div id="bPingOut" class="kvp" style="margin-top:9px"></div></div>
+      <div class="bench-section"><h4>UDS request (read data / actuator output control)</h4>
+        <div class="muted" style="margin-bottom:6px">Hex payload — e.g. <code>22F190</code> read VIN · <code>1902FF</code> read DTCs · <code>2F&lt;did&gt;03&lt;state&gt;</code> output control.</div>
+        <div class="row"><input id="bUReq" value="0x7E0" style="width:90px"><input id="bURsp" value="0x7E8" style="width:90px"><input id="bUPayload" placeholder="22F190" style="flex:1"><button onclick="ui.benchUds()">Send UDS</button></div>
+        <div id="bUdsOut" class="muted" style="margin-top:8px"></div>${hints}</div>
+      <div class="bench-section"><h4>Send raw frame</h4>
+        <div class="row"><input id="bFid" placeholder="123" style="width:90px"><input id="bFdata" placeholder="DE AD BE EF" style="flex:1"><button onclick="ui.benchSend()">Send</button></div></div>
+      <div class="bench-section"><h4>Live traffic</h4><div class="frame-log" id="bFrames"><span class="muted">Connect to see frames.</span></div></div>`;
+    this.benchLoadInterfaces(); this.benchRefreshStatus();
+  },
+  async benchLoadInterfaces() {
+    try { const list = await api.get('/api/can/interfaces'); const sel = el('bIface'); if (!sel) return;
+      sel.innerHTML = list.map(i => `<option value="${i.interface}|${i.channel}">${esc(i.channel)} (${esc(i.interface)}${i.state ? ' · ' + esc(i.state) : ''})</option>`).join(''); } catch {}
+  },
+  async benchRefreshStatus() {
+    let s; try { s = await api.get('/api/can/status'); } catch { return; }
+    const el2 = el('benchStatus'); if (!el2) return;
+    el2.innerHTML = s.connected ? `<span class="dot ok"></span> Connected to <b>${esc(s.channel)}</b> · ${s.frames} frames` : `<span class="dot"></span> Not connected`;
+    if (s.connected && !state.benchTimer) this.benchPoll(); if (!s.connected && state.benchTimer) { clearInterval(state.benchTimer); state.benchTimer = null; }
+  },
+  async benchConnect() {
+    const v = (el('bIface').value || 'socketcan|vcan0').split('|');
+    await this.busy('bConnectBtn', 'connecting…', async () => {
+      await api.send('/api/can/connect', 'POST', { interface: v[0], channel: el('bChannel').value || v[1], bitrate: parseInt(el('bBitrate').value) || 500000 });
+      state.benchSince = 0; this.benchRefreshStatus();
+    });
+  },
+  async benchDisconnect() { await api.send('/api/can/disconnect', 'POST'); if (state.benchTimer) { clearInterval(state.benchTimer); state.benchTimer = null; } this.benchRefreshStatus(); },
+  benchPoll() { state.benchTimer = setInterval(async () => { const log = el('bFrames'); if (!log) { clearInterval(state.benchTimer); state.benchTimer = null; return; } try { const r = await api.get('/api/can/frames?since=' + (state.benchSince || 0)); for (const f of r.frames) { state.benchSince = f.seq; log.insertAdjacentHTML('afterbegin', `<div class="fr"><span class="fid">${f.id}</span>${f.ext ? 'x' : ''} ${f.data}</div>`); } while (log.children.length > 200) log.lastChild.remove(); } catch {} }, 1000); },
+  async benchPing() {
+    const out = el('bPingOut'); out.innerHTML = '<span class="spinner"></span> probing…'; aiToast.show('Pinging ECU…');
+    try { const r = await api.send('/api/can/ping', 'POST', { request_id: el('bReq').value, response_id: el('bRsp').value });
+      aiToast.done(r.connected ? 'ECU responding' : 'No response');
+      out.innerHTML = `<div>Connectivity</div><div><span class="ok-badge ${r.connected ? 'yes' : 'no'}">${r.connected ? 'CONNECTED' : 'NO RESPONSE'}</span></div>` +
+        (r.vin ? `<div>VIN</div><div><b>${esc(r.vin)}</b></div>` : '') + (r.dtc_count != null ? `<div>Stored DTCs</div><div><b>${r.dtc_count}</b></div>` : '');
+    } catch (e) { aiToast.done('Error'); out.innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
+  },
+  async benchUds() {
+    const out = el('bUdsOut'); out.innerHTML = '<span class="spinner"></span> sending…';
+    try { const r = await api.send('/api/can/uds', 'POST', { request_id: el('bUReq').value, response_id: el('bURsp').value, payload: el('bUPayload').value });
+      out.innerHTML = r.ok ? `<span class="ok-badge yes">OK</span> response: <code>${esc(r.response)}</code>` : `<span class="ok-badge no">${r.nrc ? 'NRC ' + r.nrc : 'FAIL'}</span> ${esc(r.error || r.response || '')}`;
+    } catch (e) { out.innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
+  },
+  async benchSend() {
+    try { await api.send('/api/can/send', 'POST', { id: el('bFid').value, data: el('bFdata').value }); } catch (e) { alert(e.message); }
+  },
+  async busy(id, label, fn) { const b = el(id); const old = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.innerHTML = `<span class="spinner"></span> ${label}`; } aiToast.show(label); try { const r = await fn(); aiToast.done(); return r; } catch (e) { aiToast.done('Error'); alert(e.message); } finally { if (b) { b.disabled = false; b.innerHTML = old; } } },
   async extract(all) { await this.busy(all ? 'exAllBtn' : 'exBtn', all ? `scanning ${state.pageTotal}…` : 'reading…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/extract`, 'POST', { page: state.page, all_pages: !!all }); state.current.pinouts = r.pinouts; ensureView('pinout'); rerenderView('pinout'); }); },
   async identify() { await this.busy('idBtn', 'identifying…', async () => { const v = await api.send(`/api/vehicles/${state.current.id}/identify`, 'POST', { page: state.page }); Object.assign(state.current, v); this.loadRecords(); rerenderView('record'); }); },
   async canPlan() { await this.busy('planBtn', 'planning…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/can-plan`, 'POST', { page: state.page }); state.plan = r.plan; rerenderView('plan'); }); },
@@ -335,11 +446,12 @@ const ui = {
     msgs.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div></div>`);
     const aId = 'a' + Date.now(); msgs.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`); msgs.scrollTop = msgs.scrollHeight;
     state.current.messages = [...(state.current.messages || []), { role: 'user', content: q }]; let full = '';
+    aiToast.show('Thinking…');
     try { await this.stream(`/api/vehicles/${state.current.id}/chat/stream`, { message: q, save_memories: auto, page: state.page },
-      tok => { full += tok; const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); const b = el('msgs'); if (b) b.scrollTop = b.scrollHeight; } },
-      done => { const m = el(aId + '-md'); if (m) m.classList.remove('cursor-blink'); state.current.messages.push({ role: 'assistant', content: full }); if (done.saved_memories && done.saved_memories.length) this.refreshMemories(); },
-      e => { const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e)}</span>`; }); }
-    catch (e) { const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e.message)}</span>`; } },
+      tok => { full += tok; aiToast.append(tok); const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); const b = el('msgs'); if (b) b.scrollTop = b.scrollHeight; } },
+      done => { aiToast.done('Answered'); const m = el(aId + '-md'); if (m) m.classList.remove('cursor-blink'); state.current.messages.push({ role: 'assistant', content: full }); if (done.saved_memories && done.saved_memories.length) { aiToast.show(`Saved ${done.saved_memories.length} memory(ies)`); aiToast.hide(2200); this.refreshMemories(); } },
+      e => { aiToast.done('Error'); const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e)}</span>`; }); }
+    catch (e) { aiToast.done('Error'); const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e.message)}</span>`; } },
   async stream(url, body, onTok, onDone, onErr) { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) { onErr((await r.json().catch(() => ({}))).detail || 'request failed'); return; }
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';

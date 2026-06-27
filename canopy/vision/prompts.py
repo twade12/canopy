@@ -113,6 +113,20 @@ tags from its wiring diagram. Return ONLY JSON: {"tags": ["Ford", "F-250", "2016
 engine/platform, module type (PCM/BCM/ECU/TCM/ABS/…), and the system. Keep each tag short
 (1-3 words). Do not invent; omit anything not supported by the diagram."""
 
+ASSISTANT_SYSTEM = """You are CANOPY's master automotive diagnostics assistant. You have
+accumulated knowledge from many vehicles' wiring diagrams and bench tests, supplied below as
+MEMORIES (each tagged with the project it came from). Use that collective knowledge to answer
+general questions, compare vehicles, and — importantly — propose concrete ways to PROBE and
+VERIFY module function over CAN on the CANOPY bench (a Linux SocketCAN station with a
+USB-to-CAN interface, restbus simulation, and UDS tooling).
+
+When asked how to test something (e.g. "confirm the A/C clutch relay output from the ECM"),
+give a practical procedure: which pins/circuits to connect, how to confirm CAN connectivity
+first (tester-present / read VIN / read DTCs), then how to command/observe the function
+(e.g. a UDS routine or output control, or watching the relevant CAN signal), and the safety
+checks to do first. Cite specific pins/connectors/projects from the memories when relevant.
+If the needed detail isn't in the memories, say what's missing and how to capture it."""
+
 MEMORY_SUGGEST_SYSTEM = """From the conversation and diagram, extract durable, vehicle-
 specific facts worth remembering (connector locations, CAN bus topology, power/ground pins,
 module part numbers, quirks). Return ONLY JSON: {"memories": ["fact 1", "fact 2"]}. Keep

@@ -151,6 +151,29 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
 .empty { color: var(--muted); text-align: center; padding: 46px 20px; }
 
+/* AI thinking toast */
+#aiToast { position: fixed; right: 16px; bottom: 16px; z-index: 1500; width: 340px; max-width: 46vw;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 11px 13px; font-size: 12.5px; transition: opacity .2s, transform .2s; }
+#aiToast.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
+#aiToast .tt-head { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent); }
+#aiToast .tt-head .icon { width: 15px; height: 15px; }
+#aiToast .tt-body { color: var(--muted); margin-top: 5px; max-height: 92px; overflow: hidden; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
+
+/* bench / CAN */
+.bench-status { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 12px; }
+.bench-section { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.bench-section h4 { margin: 0 0 9px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); }
+.frame-log { font-family: ui-monospace, monospace; font-size: 11.5px; max-height: 200px; overflow: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.frame-log .fr { white-space: nowrap; padding: 1px 0; }
+.frame-log .fr .fid { color: var(--cyan); font-weight: 700; }
+.kvp { font-size: 13px; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+.kvp b { color: var(--text); }
+.ok-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+.ok-badge.yes { background: rgba(15,157,107,.15); color: var(--accent); }
+.ok-badge.no { background: rgba(212,73,63,.14); color: var(--danger); }
+
 /* modal */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 2000; }
 .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: min(580px, 93vw); max-height: 90vh; overflow: auto; box-shadow: var(--shadow); }

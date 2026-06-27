@@ -11,6 +11,8 @@
     <button class="iconbtn" id="sidebarToggle" title="Toggle sidebar" onclick="ui.toggleSidebar()"></button>
     <span class="wordmark">CANOPY</span>
     <div class="spacer"></div>
+    <button class="iconbtn" id="assistantBtn" title="Assistant (all projects)" onclick="ui.openView('assistant')"></button>
+    <button class="iconbtn" id="benchBtn" title="CAN bench" onclick="ui.openView('bench')"></button>
     <button class="iconbtn" id="apiBtn" title="API documentation" onclick="ui.openView('api')"></button>
     <button class="iconbtn" id="resetBtn" title="Reset layout" onclick="ui.resetLayout()"></button>
     <button class="iconbtn" id="themeToggle" title="Toggle theme" onclick="ui.toggleTheme()"></button>
@@ -37,7 +39,7 @@
 
   <input id="fileInput" type="file" accept="image/*,application/pdf" class="hidden">
   <div id="tooltip"></div>
-  <div id="dropind" class="hidden"></div>
+  <div id="aiToast" class="hidden"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>
