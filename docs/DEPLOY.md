@@ -61,6 +61,29 @@ sudo -u canopy .venv/bin/pip install -e ".[vision]"
 sudo systemctl restart canopy
 ```
 
+## Shared knowledge base (Postgres + pgvector)
+
+By default the app uses a local SQLite file (fine for a single box). For a team — shared
+knowledge across technicians and org-wide semantic search — point it at **Postgres with
+pgvector**:
+
+```bash
+# quickest: the official pgvector image
+docker run -d --name canopy-db -e POSTGRES_PASSWORD=canopy -e POSTGRES_USER=canopy \
+    -e POSTGRES_DB=canopy -p 5432:5432 pgvector/pgvector:pg16
+# (or `docker compose up -d db` for the Timescale+pgvector image in this repo)
+```
+
+Then set on the service:
+
+```ini
+Environment=CANOPY_DATABASE_URL=postgresql://canopy:canopy@localhost:5432/canopy
+```
+
+The schema (incl. the `vector` extension) is created automatically on first boot. Uploaded
+files still live under `CANOPY_VISION_DATA/uploads` — back both up. (Object storage for
+files and full server-side ANN search are in [GAMEPLAN.md](GAMEPLAN.md).)
+
 ## Notes & hardening
 
 - **CAN bench over the web:** the `/api/can/*` endpoints talk to a CAN interface on the

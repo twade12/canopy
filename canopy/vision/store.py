@@ -15,6 +15,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def make_store(config):
+    """Return the store backend for `config`: Postgres+pgvector if CANOPY_DATABASE_URL is
+    set, else the local SQLite Store."""
+    if getattr(config, "database_url", ""):
+        from canopy.vision.pgstore import PgStore
+
+        return PgStore(config.database_url)
+    return Store(config.db_path)
+
+
 def normalize_connector(name: str) -> str:
     """Canonicalize a connector label so '1232b' and 'C1232B' map to one key.
 

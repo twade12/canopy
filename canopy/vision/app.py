@@ -30,7 +30,7 @@ from canopy.vision.api_reference import API_REFERENCE
 from canopy.vision.config import VisionConfig
 from canopy.vision.ollama_client import ChatMessage, OllamaClient, OllamaError
 from canopy.vision.prompts import RESEARCH_SYSTEM
-from canopy.vision.store import Store
+from canopy.vision.store import make_store
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -176,7 +176,7 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def auth_status() -> dict:
         return {"auth": bool(config.password)}
 
-    store = Store(config.db_path)
+    store = make_store(config)
     client = OllamaClient(
         config.ollama_url, config.model, timeout=config.request_timeout
     )

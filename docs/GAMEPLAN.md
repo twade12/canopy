@@ -65,10 +65,10 @@ multimodal, AI-guided session.
 - **Accounts & roles.** Replace the single shared password with real users (tech/engineer/admin),
   org/workspace scoping, per-action attribution. Keep it simple: email+password or SSO (Authentik/
   Google) behind the existing middleware; sessions already cookie-based.
-- **Postgres + pgvector.** Migrate the vision store from SQLite to the Postgres/Timescale/pgvector
-  already in [docker-compose.yml](../docker-compose.yml). Embeddings become first-class vector
-  columns (semantic search across the whole org's knowledge, not per-process). Object storage
-  (S3/MinIO) for diagrams/photos instead of local disk.
+- **Postgres + pgvector.** ✅ *Done (backend):* a `PgStore` ([pgstore.py](../canopy/vision/pgstore.py))
+  mirrors the SQLite store and is selected by `CANOPY_DATABASE_URL`; embeddings live in a real
+  `vector` column. *Remaining:* server-side ANN search (HNSW index + `<=>` retrieval) instead of
+  the current Python-side ranking, and object storage (S3/MinIO) for diagrams/photos.
 - **Domain objects.** `Workspace → Module → RepairSession → Observation/Photo → Case`, plus
   `Project` for triage. Provenance on every memory (who/when/which session).
 

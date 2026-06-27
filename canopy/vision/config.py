@@ -25,6 +25,7 @@ class VisionConfig:
     data_dir: Path = Path.home() / ".canopy" / "vision"
     request_timeout: float = 600.0
     password: str = ""  # CANOPY_PASSWORD; empty disables auth (local/dev)
+    database_url: str = ""  # CANOPY_DATABASE_URL; empty = local SQLite, else Postgres+pgvector
 
     @classmethod
     def from_env(cls, **overrides) -> VisionConfig:
@@ -36,6 +37,7 @@ class VisionConfig:
             data_dir=Path(os.environ.get("CANOPY_VISION_DATA", str(d.data_dir))),
             request_timeout=float(os.environ.get("CANOPY_OLLAMA_TIMEOUT", d.request_timeout)),
             password=os.environ.get("CANOPY_PASSWORD", d.password),
+            database_url=os.environ.get("CANOPY_DATABASE_URL", d.database_url),
         )
         for key, value in overrides.items():
             if value is not None:
