@@ -96,6 +96,23 @@ def test_merge_normalizes_connector(tmp_path: Path) -> None:
     store.close()
 
 
+def test_tags_and_memory_embeddings(tmp_path: Path) -> None:
+    store = Store(tmp_path / "t.db")
+    v = store.create_vehicle(label="x")
+    store.add_tag(v["id"], "Ford")
+    store.add_tag(v["id"], "ford")          # case-insensitive dedup
+    store.add_tag(v["id"], "Duramax")
+    assert store.list_tags(v["id"]) == ["Duramax", "Ford"]
+    store.remove_tag(v["id"], "FORD")        # case-insensitive remove
+    assert store.list_tags(v["id"]) == ["Duramax"]
+    assert store.list_vehicles()[0]["tags"] == ["Duramax"]
+
+    m = store.add_memory(v["id"], "CAN-H is pin 59", embedding=[0.1, 0.2, 0.3])
+    assert m["embedding"] == [0.1, 0.2, 0.3]
+    assert store.list_memories(v["id"])[0]["embedding"] == [0.1, 0.2, 0.3]
+    store.close()
+
+
 def test_store_round_trip(tmp_path: Path) -> None:
     store = Store(tmp_path / "v.db")
     v = store.create_vehicle(vin="1FT7W2BT0GEA12345", make="Ford", model="F-250 6.7L")

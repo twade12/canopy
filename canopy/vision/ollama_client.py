@@ -49,6 +49,11 @@ class OllamaClient:
         except urllib.error.URLError as exc:
             raise OllamaError(f"Ollama request to {url} failed: {exc}") from exc
 
+    def embed(self, text: str, *, model: str) -> list[float]:
+        """Return an embedding vector for `text` from an embedding model."""
+        result = self._post("/api/embeddings", {"model": model, "prompt": text})
+        return [float(x) for x in result.get("embedding", [])]
+
     def list_models(self) -> list[str]:
         url = f"{self.base_url}/api/tags"
         try:

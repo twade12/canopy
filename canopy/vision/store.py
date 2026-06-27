@@ -7,6 +7,7 @@ per-vehicle questions and accumulate memories over time.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -48,7 +49,13 @@ CREATE TABLE IF NOT EXISTS pinout (
 CREATE TABLE IF NOT EXISTS memory (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
-    kind TEXT DEFAULT 'note', content TEXT NOT NULL,
+    kind TEXT DEFAULT 'note', content TEXT NOT NULL, embedding TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tag (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS message (
@@ -87,6 +94,9 @@ class Store:
             name = col.split()[0]
             if name not in have:
                 self._conn.execute(f"ALTER TABLE pinout ADD COLUMN {col}")
+        mem = {r["name"] for r in self._conn.execute("PRAGMA table_info(memory)")}
+        if "embedding" not in mem:
+            self._conn.execute("ALTER TABLE memory ADD COLUMN embedding TEXT")
 
     def close(self) -> None:
         self._conn.close()
@@ -122,7 +132,12 @@ class Store:
 
     def list_vehicles(self) -> list[dict]:
         rows = self._conn.execute("SELECT * FROM vehicle ORDER BY created_at DESC").fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["tags"] = self.list_tags(d["id"])
+            out.append(d)
+        return out
 
     def delete_vehicle(self, vehicle_id: int) -> None:
         self._conn.execute("DELETE FROM vehicle WHERE id = ?", (vehicle_id,))
@@ -213,24 +228,57 @@ class Store:
         return [dict(r) for r in rows]
 
     # --- memories --------------------------------------------------------------
-    def add_memory(self, vehicle_id: int, content: str, *, kind: str = "note") -> dict:
+    def add_memory(
+        self, vehicle_id: int, content: str, *, kind: str = "note", embedding: list | None = None
+    ) -> dict:
         cur = self._conn.execute(
-            "INSERT INTO memory (vehicle_id, kind, content, created_at) VALUES (?,?,?,?)",
-            (vehicle_id, kind, content, _now()),
+            "INSERT INTO memory (vehicle_id, kind, content, embedding, created_at)"
+            " VALUES (?,?,?,?,?)",
+            (vehicle_id, kind, content, json.dumps(embedding) if embedding else None, _now()),
         )
         self._conn.commit()
         row = self._conn.execute("SELECT * FROM memory WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return dict(row)
+        return self._memory_row(row)
+
+    @staticmethod
+    def _memory_row(row) -> dict:
+        d = dict(row)
+        d["embedding"] = json.loads(d["embedding"]) if d.get("embedding") else None
+        return d
 
     def list_memories(self, vehicle_id: int) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM memory WHERE vehicle_id = ? ORDER BY created_at DESC", (vehicle_id,)
         ).fetchall()
-        return [dict(r) for r in rows]
+        return [self._memory_row(r) for r in rows]
 
     def delete_memory(self, memory_id: int) -> None:
         self._conn.execute("DELETE FROM memory WHERE id = ?", (memory_id,))
         self._conn.commit()
+
+    # --- tags ------------------------------------------------------------------
+    def add_tag(self, vehicle_id: int, tag: str) -> list[str]:
+        tag = tag.strip()
+        if tag and tag.lower() not in {t.lower() for t in self.list_tags(vehicle_id)}:
+            self._conn.execute(
+                "INSERT INTO tag (vehicle_id, tag, created_at) VALUES (?,?,?)",
+                (vehicle_id, tag, _now()),
+            )
+            self._conn.commit()
+        return self.list_tags(vehicle_id)
+
+    def remove_tag(self, vehicle_id: int, tag: str) -> list[str]:
+        self._conn.execute(
+            "DELETE FROM tag WHERE vehicle_id = ? AND tag = ? COLLATE NOCASE", (vehicle_id, tag)
+        )
+        self._conn.commit()
+        return self.list_tags(vehicle_id)
+
+    def list_tags(self, vehicle_id: int) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT tag FROM tag WHERE vehicle_id = ? ORDER BY tag COLLATE NOCASE", (vehicle_id,)
+        ).fetchall()
+        return [r["tag"] for r in rows]
 
     # --- chat ------------------------------------------------------------------
     def add_message(self, vehicle_id: int, role: str, content: str) -> dict:

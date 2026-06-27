@@ -87,6 +87,12 @@ connector names from the diagram. When asked how to wire for CAN or simulate a c
 KL15, GND, CAN-H, CAN-L). Always remind the tech to verify power/ground before energizing.
 If something is not in the diagram or saved facts, say so rather than guessing."""
 
+TAGS_SYSTEM = """You label an automotive/electronics triage project with short, searchable
+tags from its wiring diagram. Return ONLY JSON: {"tags": ["Ford", "F-250", "2016",
+"6.7L Diesel", "PCM", "Powertrain"]}. Include, when identifiable: make, model, model year,
+engine/platform, module type (PCM/BCM/ECU/TCM/ABS/…), and the system. Keep each tag short
+(1-3 words). Do not invent; omit anything not supported by the diagram."""
+
 MEMORY_SUGGEST_SYSTEM = """From the conversation and diagram, extract durable, vehicle-
 specific facts worth remembering (connector locations, CAN bus topology, power/ground pins,
 module part numbers, quirks). Return ONLY JSON: {"memories": ["fact 1", "fact 2"]}. Keep

@@ -7,6 +7,7 @@ is defensive: local models sometimes wrap JSON in prose or code fences.
 from __future__ import annotations
 
 import json
+import math
 import re
 
 from canopy.vision.ollama_client import ChatMessage, OllamaClient
@@ -16,7 +17,47 @@ from canopy.vision.prompts import (
     EXTRACT_SYSTEM,
     IDENTIFY_SYSTEM,
     MEMORY_SUGGEST_SYSTEM,
+    TAGS_SYSTEM,
 )
+
+
+def cosine(a: list[float], b: list[float]) -> float:
+    """Cosine similarity of two vectors (0 if either is empty/zero)."""
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def is_novel(vec: list[float], existing: list[list[float]], *, threshold: float = 0.86) -> bool:
+    """True if `vec` is not near-duplicate of any existing embedding."""
+    return all(cosine(vec, e) < threshold for e in existing if e)
+
+
+def rank_by_similarity(query: list[float], items: list[tuple], *, k: int = 6) -> list:
+    """Sort (vector, payload) items by cosine to `query`; return top-k payloads."""
+    scored = [(cosine(query, vec), payload) for vec, payload in items if vec]
+    scored.sort(key=lambda s: s[0], reverse=True)
+    return [payload for _, payload in scored[:k]]
+
+
+def extract_tags(client: OllamaClient, images: list[str], identity: str = "") -> list[str]:
+    """Extract short searchable tags (make, model, year, system, module type)."""
+    user = "Extract tags for this project."
+    if identity:
+        user += f"\nKnown so far: {identity}"
+    messages = [ChatMessage("system", TAGS_SYSTEM), ChatMessage("user", user, images=images)]
+    data = parse_json_object(client.chat(messages, temperature=0.0))
+    out, seen = [], set()
+    for t in data.get("tags", []) or []:
+        t = str(t).strip()
+        key = t.lower()
+        if t and key not in seen:
+            seen.add(key)
+            out.append(t)
+    return out
 
 
 def parse_json_object(text: str) -> dict:

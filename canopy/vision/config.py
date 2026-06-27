@@ -21,6 +21,7 @@ class VisionConfig:
 
     ollama_url: str = "http://localhost:11434"
     model: str = "gemma4:26b"
+    embed_model: str = "nomic-embed-text"
     data_dir: Path = Path.home() / ".canopy" / "vision"
     request_timeout: float = 600.0
 
@@ -30,6 +31,7 @@ class VisionConfig:
         cfg = cls(
             ollama_url=os.environ.get("CANOPY_OLLAMA_URL", d.ollama_url),
             model=os.environ.get("CANOPY_OLLAMA_MODEL", d.model),
+            embed_model=os.environ.get("CANOPY_OLLAMA_EMBED_MODEL", d.embed_model),
             data_dir=Path(os.environ.get("CANOPY_VISION_DATA", str(d.data_dir))),
             request_timeout=float(os.environ.get("CANOPY_OLLAMA_TIMEOUT", d.request_timeout)),
         )

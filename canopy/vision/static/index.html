@@ -9,43 +9,35 @@
 <body>
   <header class="topbar">
     <button class="iconbtn" id="sidebarToggle" title="Toggle sidebar" onclick="ui.toggleSidebar()"></button>
-    <div class="brand">
-      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
-        <path d="M40 8 L57 16 L46 27 Z" fill="#f3b95f" stroke="#d99b45" stroke-width="1.5"/>
-        <path d="M52 13 L46 27" stroke="#c77b36" stroke-width="4" stroke-linecap="round"/>
-        <rect x="14" y="26" width="28" height="28" fill="#2e8b6f"/>
-        <rect x="14" y="36" width="28" height="13" fill="#0e3a2b"/>
-        <ellipse cx="28" cy="26" rx="14" ry="4.5" fill="#6fe0b4"/>
-        <ellipse cx="28" cy="26" rx="11" ry="3" fill="#0d2c20"/>
-      </svg>
-      <span class="name">CANOPY</span><span class="pun">Can&nbsp;’o&nbsp;Pie</span>
-    </div>
+    <span class="wordmark">CANOPY</span>
     <div class="spacer"></div>
-    <button class="iconbtn" id="splitToggle" title="Split / unsplit right panel" onclick="ui.toggleSplit()"></button>
-    <button class="iconbtn" id="diagToggle" title="Show/hide diagram panel" onclick="ui.toggleDiagram()"></button>
+    <button class="iconbtn" id="apiBtn" title="API documentation" onclick="ui.openView('api')"></button>
+    <button class="iconbtn" id="resetBtn" title="Reset layout" onclick="ui.resetLayout()"></button>
     <button class="iconbtn" id="themeToggle" title="Toggle theme" onclick="ui.toggleTheme()"></button>
     <div class="status-pill"><span id="statusDot" class="dot"></span><span id="statusText">…</span></div>
   </header>
 
   <div class="app">
     <aside class="sidebar" id="sidebar">
-      <div class="head"><h2>Modules / Vehicles</h2>
-        <button class="iconbtn" title="New record" onclick="ui.newRecord()" id="newRecBtn"></button>
+      <div class="head"><h2>Projects</h2>
+        <button class="iconbtn" title="New project" onclick="ui.newRecord()" id="newRecBtn"></button>
+      </div>
+      <div class="sb-controls">
+        <div class="sb-search"><span id="searchIcon"></span><input id="projSearch" placeholder="Search title or tag…" oninput="ui.renderRecords()"></div>
+        <div class="row" style="gap:6px">
+          <select id="projSort" onchange="ui.renderRecords()"><option value="recent">Recent</option><option value="title">Title A–Z</option></select>
+          <select id="projGroup" onchange="ui.renderRecords()"><option value="none">No grouping</option><option value="make">By make</option><option value="year">By year</option></select>
+        </div>
       </div>
       <div class="list" id="recordList"></div>
     </aside>
 
-    <div class="workspace" id="workspace">
-      <div class="slot" id="slot-left"></div>
-      <div class="col-right">
-        <div class="slot" id="slot-rightTop"></div>
-        <div class="slot hidden" id="slot-rightBottom"></div>
-      </div>
-    </div>
+    <div class="workspace" id="workspace"></div>
   </div>
 
   <input id="fileInput" type="file" accept="image/*,application/pdf" class="hidden">
   <div id="tooltip"></div>
+  <div id="dropind" class="hidden"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>

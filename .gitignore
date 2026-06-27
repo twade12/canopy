@@ -28,3 +28,6 @@ traces/*.asc
 # sample wiring diagrams (large, user-provided)
 *F250-to-F550.pdf
 486265419-*.pdf
+
+# user-provided wiring diagrams in repo root (large binaries)
+/*.pdf

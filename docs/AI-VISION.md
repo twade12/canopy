@@ -109,13 +109,26 @@ copy the SQLite file.
 
 ## Interface
 
-The UI is a **VS Code-style workspace**: a collapsible left sidebar of records, and a main
-area split into panels, each with its own tabs (Diagram · Pinout · Wiring Plan · Chat ·
-Memories · Record). Put the **Diagram** beside the **Pinout** (or Chat), or **split** the
-right panel to see two at once — no more scrolling to compare. Click a pin to jump the
-diagram to that pin's page and see its detail. Pin numbers mentioned in the wiring plan and
-chat are **hover-able** (function + page). Toggle a **light/dark theme**. Chat answers
-**stream in real time**, and new, non-duplicate facts can be **auto-saved to memory**.
+The UI is a **VS Code-style dockable workspace**:
+
+- **Drag any tab** (Diagram · Pinout · Wiring Plan · Chat · Memories · Record · API) to a
+  panel's edge (left/right/top/bottom) to **split**, or onto another panel's tab bar to
+  move it there. **Drag the borders** between panels to **resize** (e.g. PDF 60% / pinout
+  40%). Close a tab with its ✕; re-add via the **+** on any tab bar. Layout is remembered.
+- **PDF zoom** (− / % / + / fit) and page navigation in the Diagram panel.
+- **Floating pin filter + sticky detail** in the Pinout panel (minimal scrolling). Click a
+  pin to jump the Diagram to that pin's page.
+- **Projects** in the sidebar: search by title/tag, sort by recent/title, group by make or
+  year. Each project carries **tags** (added by hand or **AI-extracted** from the diagram).
+- **Hover-able pin references** in the plan/chat (function + page), **light/dark theme**,
+  **streaming** chat, and an in-app **API** tab with copy-paste examples (also `/api/docs`).
+
+### Smarter memory (embeddings)
+
+Memories are embedded with **`nomic-embed-text`**. New facts are saved only if they're
+**semantically distinct** from existing ones (no duplicate restatements), and chat pulls
+the **most relevant** memories (not just the most recent) into context — which improves
+answers to abstract questions.
 
 ## Notes & limitations
 

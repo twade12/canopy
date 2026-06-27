@@ -1,35 +1,28 @@
-// CANOPY Vision — local wiring-diagram copilot (VS Code-style tabbed/split UI).
+// CANOPY Vision — drag-and-dock workspace + local AI wiring-diagram copilot.
 
 const ICON = {
-  menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
-  split: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',
+  menu: '<path d="M3 6h18M3 12h18M3 18h18"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   diagram: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
-  vehicle: '<path d="M5 13l1.5-4.5A2 2 0 018.4 7h7.2a2 2 0 011.9 1.5L19 13M5 13h14v4H5z"/><circle cx="7.5" cy="17" r="1.2"/><circle cx="16.5" cy="17" r="1.2"/>',
   pinout: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/>',
   plan: '<path d="M4 6h16M4 12h16M4 18h10"/><circle cx="20" cy="18" r="1.5"/>',
-  chat: '<path d="M4 5h16v11H8l-4 4z"/>',
-  memory: '<path d="M9 3a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V6a3 3 0 00-3-3z"/>',
-  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/>',
-  moon: '<path d="M21 12.8A8 8 0 1111 3a6 6 0 0010 9.8z"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>',
-  prev: '<path d="M15 6l-6 6 6 6"/>', next: '<path d="M9 6l6 6-6 6"/>',
-  upload: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>',
-  close: '<path d="M6 6l12 12M18 6L6 18"/>',
-  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
-  bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
-  warn: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+  chat: '<path d="M4 5h16v11H8l-4 4z"/>', memory: '<path d="M9 3a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V6a3 3 0 00-3-3z"/>',
+  record: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h6M7 13h10"/>',
+  api: '<path d="M8 3H5v18h3M16 3h3v18h-3M9 12h6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/>',
+  moon: '<path d="M21 12.8A8 8 0 1111 3a6 6 0 0010 9.8z"/>', reset: '<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 8a8 8 0 00-14-3M4 16a8 8 0 0014 3"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>', prev: '<path d="M15 6l-6 6 6 6"/>', next: '<path d="M9 6l6 6-6 6"/>',
+  upload: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
+  bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', warn: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+  zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
 };
-const svg = (name, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON[name] || ''}</svg>`;
-
+const svg = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON[n] || ''}</svg>`;
 const VIEWS = [
-  { key: 'diagram', label: 'Diagram', icon: 'diagram' },
-  { key: 'pinout', label: 'Pinout', icon: 'pinout' },
-  { key: 'plan', label: 'Wiring Plan', icon: 'plan' },
-  { key: 'chat', label: 'Chat', icon: 'chat' },
-  { key: 'memories', label: 'Memories', icon: 'memory' },
-  { key: 'vehicle', label: 'Record', icon: 'vehicle' },
+  { key: 'diagram', label: 'Diagram', icon: 'diagram' }, { key: 'pinout', label: 'Pinout', icon: 'pinout' },
+  { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
+  { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
+  { key: 'api', label: 'API', icon: 'api' },
 ];
-const SLOTS = { left: 'slot-left', rightTop: 'slot-rightTop', rightBottom: 'slot-rightBottom' };
+const meta = k => VIEWS.find(v => v.key === k) || { label: k, icon: 'diagram' };
 
 const api = {
   async get(p) { const r = await fetch(p); if (!r.ok) throw await err(r); return r.json(); },
@@ -40,301 +33,267 @@ async function err(r) { let d; try { d = (await r.json()).detail; } catch { d = 
 const el = id => document.getElementById(id);
 const esc = s => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const state = {
-  records: [], current: null, page: 0, pageTotal: 1, diagramId: null, selectedPin: null,
-  plan: '', layout: { left: 'diagram', rightTop: 'pinout', rightBottom: null },
-  sidebar: true, leftOn: true, theme: localStorage.getItem('canopy-theme') || 'light',
-};
+const state = { records: [], current: null, page: 0, pageTotal: 1, diagramId: null, selectedPin: null,
+  plan: '', zoom: 1, apiRef: null, gid: 1, drag: null,
+  theme: localStorage.getItem('canopy-theme') || 'light', sidebar: true, dock: null };
 
 // ---------- markdown ----------
 function md(t) {
-  let s = esc(t);
-  s = s.replace(/```([\s\S]*?)```/g, (_, c) => `<pre><code>${c.trim()}</code></pre>`);
-  const lines = s.split('\n'); let out = '', list = null;
-  const closeList = () => { if (list) { out += `</${list}>`; list = null; } };
-  for (let ln of lines) {
-    if (/^\s*[-*]\s+/.test(ln)) { if (list !== 'ul') { closeList(); out += '<ul>'; list = 'ul'; } out += '<li>' + ln.replace(/^\s*[-*]\s+/, '') + '</li>'; continue; }
-    if (/^\s*\d+\.\s+/.test(ln)) { if (list !== 'ol') { closeList(); out += '<ol>'; list = 'ol'; } out += '<li>' + ln.replace(/^\s*\d+\.\s+/, '') + '</li>'; continue; }
-    closeList();
+  let s = esc(t).replace(/```([\s\S]*?)```/g, (_, c) => `<pre><code>${c.trim()}</code></pre>`);
+  const lines = s.split('\n'); let out = '', list = null; const close = () => { if (list) { out += `</${list}>`; list = null; } };
+  for (const ln of lines) {
+    if (/^\s*[-*]\s+/.test(ln)) { if (list !== 'ul') { close(); out += '<ul>'; list = 'ul'; } out += '<li>' + ln.replace(/^\s*[-*]\s+/, '') + '</li>'; continue; }
+    if (/^\s*\d+\.\s+/.test(ln)) { if (list !== 'ol') { close(); out += '<ol>'; list = 'ol'; } out += '<li>' + ln.replace(/^\s*\d+\.\s+/, '') + '</li>'; continue; }
+    close();
     if (/^###\s+/.test(ln)) out += '<h3>' + ln.replace(/^###\s+/, '') + '</h3>';
     else if (/^##\s+/.test(ln)) out += '<h2>' + ln.replace(/^##\s+/, '') + '</h2>';
     else if (/^#\s+/.test(ln)) out += '<h1>' + ln.replace(/^#\s+/, '') + '</h1>';
-    else if (ln.trim() === '') out += '';
-    else out += '<p>' + ln + '</p>';
+    else if (ln.trim()) out += '<p>' + ln + '</p>';
   }
-  closeList();
-  out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>').replace(/`([^`]+)`/g, '<code>$1</code>');
-  return wrapPinRefs(out);
+  close();
+  out = out.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  return out.replace(/\b([Pp]in|[Tt]erminal)\s*#?\s*(\d{1,3})\b/g, (m, w, n) => pinIndex()[n]
+    ? `<span class="pinref" data-pin="${n}" onmouseenter="ui.pinTip(event,'${n}')" onmouseleave="ui.hideTip()" onclick="ui.gotoPinPage('${n}')">${m}</span>` : m);
 }
-function wrapPinRefs(html) {
-  return html.replace(/\b([Pp]in|[Tt]erminal)\s*#?\s*(\d{1,3})\b/g,
-    (m, w, n) => pinIndex()[n] ? `<span class="pinref" data-pin="${n}" onmouseenter="ui.pinTip(event,'${n}')" onmouseleave="ui.hideTip()" onclick="ui.gotoPinPage('${n}')">${m}</span>` : m);
-}
-function pinIndex() {
-  const idx = {};
-  for (const p of (state.current?.pinouts || [])) if (p.pin && !(p.pin in idx)) idx[p.pin] = p;
-  return idx;
-}
-function sigClass(s) {
-  s = (s || '').toLowerCase();
+function pinIndex() { const i = {}; for (const p of (state.current?.pinouts || [])) if (p.pin && !(p.pin in i)) i[p.pin] = p; return i; }
+function sigClass(s) { s = (s || '').toLowerCase();
   if (/can[\s-]?(h|hi|high|l|lo|low|\+|-)|^can\b/.test(s)) return 'can';
   if (/pwr|power|vpwr|kappwr|b\+|\+12|batt|kl30|kl15|ign|vbpwr/.test(s)) return 'pwr';
-  if (/gnd|ground|pwrgnd|sigrtn|return/.test(s)) return 'gnd';
-  return '';
+  if (/gnd|ground|pwrgnd|sigrtn|return/.test(s)) return 'gnd'; return ''; }
+
+// ================= DOCK ENGINE =================
+function defaultDock() { state.gid = 1; const g = () => state.gid++;
+  return { t: 's', dir: 'row', sizes: [58, 42], kids: [
+    { t: 'g', id: g(), tabs: ['diagram'], active: 'diagram' },
+    { t: 's', dir: 'col', sizes: [58, 42], kids: [
+      { t: 'g', id: g(), tabs: ['pinout', 'record'], active: 'pinout' },
+      { t: 'g', id: g(), tabs: ['chat', 'plan', 'memories', 'api'], active: 'chat' }] }] }; }
+function saveDock() { try { localStorage.setItem('canopy-dock', JSON.stringify(state.dock)); } catch {} }
+function loadDock() { try { const d = JSON.parse(localStorage.getItem('canopy-dock')); if (d && d.t) { let mx = 0; (function walk(n){ if (n.t === 'g') mx = Math.max(mx, n.id); else n.kids.forEach(walk); })(d); state.gid = mx + 1; return d; } } catch {} return defaultDock(); }
+const parentOf = (node, t) => { if (node.t !== 's') return null; for (let i = 0; i < node.kids.length; i++) { if (node.kids[i] === t) return { parent: node, idx: i }; const r = parentOf(node.kids[i], t); if (r) return r; } return null; };
+const groupOfView = (node, v) => node.t === 'g' ? (node.tabs.includes(v) ? node : null) : node.kids.reduce((a, k) => a || groupOfView(k, v), null);
+const firstGroup = n => n.t === 'g' ? n : firstGroup(n.kids[0]);
+const placedViews = (n, s = new Set()) => { if (n.t === 'g') n.tabs.forEach(t => s.add(t)); else n.kids.forEach(k => placedViews(k, s)); return s; };
+
+function removeViewFromGroup(v) { const g = groupOfView(state.dock, v); if (!g) return; g.tabs.splice(g.tabs.indexOf(v), 1); if (g.active === v) g.active = g.tabs[g.tabs.length - 1] || null; if (!g.tabs.length) removeGroup(g); }
+function removeGroup(g) { if (g === state.dock) return; const { parent, idx } = parentOf(state.dock, g); parent.kids.splice(idx, 1); parent.sizes.splice(idx, 1); if (parent.kids.length === 1) collapse(parent); }
+function collapse(split) { const only = split.kids[0]; if (split === state.dock) state.dock = only; else { const p = parentOf(state.dock, split); p.parent.kids[p.idx] = only; } }
+function splitWith(target, v, side) {
+  const ng = { t: 'g', id: state.gid++, tabs: [v], active: v };
+  const dir = (side === 'left' || side === 'right') ? 'row' : 'col', before = (side === 'left' || side === 'top');
+  const info = parentOf(state.dock, target);
+  if (info && info.parent.dir === dir) { const at = before ? info.idx : info.idx + 1; info.parent.kids.splice(at, 0, ng); info.parent.sizes.splice(at, 0, 100); }
+  else { const ns = { t: 's', dir, sizes: [100, 100], kids: before ? [ng, target] : [target, ng] }; if (target === state.dock) state.dock = ns; else { const p = parentOf(state.dock, target); p.parent.kids[p.idx] = ns; } }
+}
+function ensureView(v) { if (!groupOfView(state.dock, v)) { const g = firstGroup(state.dock); g.tabs.push(v); g.active = v; } else groupOfView(state.dock, v).active = v; saveDock(); renderDock(); }
+
+function computeZone(r, x, y) { const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height, m = Math.min(fx, 1 - fx, fy, 1 - fy);
+  if (m > 0.22) return 'center'; return m === fx ? 'left' : m === 1 - fx ? 'right' : m === fy ? 'top' : 'bottom'; }
+function showZone(z, side) { const b = { left: ['0', '0', '50%', '100%'], right: ['50%', '0', '50%', '100%'], top: ['0', '0', '100%', '50%'], bottom: ['0', '50%', '100%', '50%'], center: ['8%', '8%', '84%', '84%'] }[side];
+  z.style.display = 'block'; z.style.left = b[0]; z.style.top = b[1]; z.style.width = b[2]; z.style.height = b[3]; }
+
+function renderDock() { const ws = el('workspace'); ws.innerHTML = ''; ws.appendChild(renderNode(state.dock)); }
+function renderNode(node) {
+  if (node.t === 'g') return renderGroup(node);
+  const box = document.createElement('div'); box.className = 'split ' + node.dir;
+  const kidEls = [];
+  node.kids.forEach((kid, i) => {
+    if (i > 0) { const rz = document.createElement('div'); rz.className = 'resizer'; box.appendChild(rz); }
+    const k = renderNode(kid); k.style.flex = `${node.sizes[i]} 1 0`;
+    if (node.dir === 'row') k.style.height = '100%'; else k.style.width = '100%';
+    box.appendChild(k); kidEls.push(k);
+  });
+  let ri = 0;
+  [...box.children].forEach(ch => { if (ch.classList.contains('resizer')) { attachResizer(ch, node, ri, kidEls[ri], kidEls[ri + 1]); ri++; } });
+  return box;
+}
+function attachResizer(rz, split, i, a, b) {
+  rz.onmousedown = e => { e.preventDefault(); const horiz = split.dir === 'row'; const start = horiz ? e.clientX : e.clientY;
+    const aS = horiz ? a.offsetWidth : a.offsetHeight, bS = horiz ? b.offsetWidth : b.offsetHeight;
+    const mv = ev => { const d = (horiz ? ev.clientX : ev.clientY) - start; const na = aS + d, nb = bS - d; if (na < 80 || nb < 80) return; split.sizes[i] = na; split.sizes[i + 1] = nb; a.style.flex = `${na} 1 0`; b.style.flex = `${nb} 1 0`; };
+    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); saveDock(); };
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up); };
+}
+function renderGroup(group) {
+  const g = document.createElement('div'); g.className = 'group'; g.dataset.gid = group.id;
+  const strip = document.createElement('div'); strip.className = 'tabstrip';
+  group.tabs.forEach(v => { const tab = document.createElement('div'); tab.className = 'tab' + (v === group.active ? ' active' : ''); tab.draggable = true;
+    tab.innerHTML = `${svg(meta(v).icon)} ${meta(v).label} <span class="x">${svg('close')}</span>`;
+    tab.onclick = e => { if (e.target.closest('.x')) { removeViewFromGroup(v); saveDock(); renderDock(); } else { group.active = v; saveDock(); rerenderGroup(group); } };
+    tab.ondragstart = e => { state.drag = { view: v }; tab.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; };
+    tab.ondragend = () => { tab.classList.remove('dragging'); state.drag = null; }; strip.appendChild(tab); });
+  const hidden = VIEWS.filter(v => !placedViews(state.dock).has(v.key));
+  if (hidden.length) { const add = document.createElement('div'); add.className = 'tab'; add.style.marginLeft = 'auto'; add.innerHTML = svg('plus'); add.title = 'Add a panel'; add.onclick = e => addMenu(e, group, hidden); strip.appendChild(add); }
+  const body = document.createElement('div'); body.className = 'panel-content'; body.style.position = 'relative';
+  const ov = document.createElement('div'); ov.className = 'dropzone-edge'; const zone = document.createElement('div'); zone.className = 'zone'; ov.appendChild(zone); body.appendChild(ov);
+  const content = document.createElement('div'); content.className = 'pc-content'; body.appendChild(content);
+  g.ondragover = e => { if (!state.drag) return; e.preventDefault(); showZone(zone, computeZone(g.getBoundingClientRect(), e.clientX, e.clientY)); };
+  g.ondragleave = e => { if (!g.contains(e.relatedTarget)) zone.style.display = 'none'; };
+  g.ondrop = e => { if (!state.drag) return; e.preventDefault(); const side = computeZone(g.getBoundingClientRect(), e.clientX, e.clientY); zone.style.display = 'none'; ui.handleDrop(group, state.drag.view, side); };
+  g.appendChild(strip); g.appendChild(body);
+  renderViewInto(group.active, content);
+  return g;
+}
+function addMenu(e, group, hidden) { e.stopPropagation(); const m = document.createElement('div'); m.className = 'addmenu';
+  m.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:5px;box-shadow:var(--shadow);z-index:1000`;
+  hidden.forEach(v => { const it = document.createElement('div'); it.style.cssText = 'padding:6px 12px;cursor:pointer;font-size:13px;border-radius:6px;display:flex;gap:7px;align-items:center'; it.innerHTML = svg(v.icon) + ' ' + v.label; it.onmouseenter = () => it.style.background = 'var(--panel-2)'; it.onmouseleave = () => it.style.background = ''; it.onclick = () => { group.tabs.push(v.key); group.active = v.key; saveDock(); renderDock(); m.remove(); }; m.appendChild(it); });
+  document.body.appendChild(m); setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+}
+function rerenderGroup(group) { const gEl = document.querySelector(`.group[data-gid="${group.id}"]`); if (!gEl) { renderDock(); return; } gEl.replaceWith(renderGroup(group)); }
+function rerenderView(v) { const g = groupOfView(state.dock, v); if (g && g.active === v) { const c = document.querySelector(`.group[data-gid="${g.id}"] .pc-content`); if (c) renderViewInto(v, c); } }
+function contentOf(v) { const g = groupOfView(state.dock, v); return g ? document.querySelector(`.group[data-gid="${g.id}"] .pc-content`) : null; }
+
+function renderViewInto(view, c) {
+  if (!c) return;
+  if (view === 'api') return ui.viewApi(c);
+  if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
+  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, memories: ui.viewMemories, record: ui.viewRecord })[view].call(ui, c);
 }
 
+// ================= UI =================
 const ui = {
   async init() {
     document.documentElement.dataset.theme = state.theme;
-    el('sidebarToggle').innerHTML = svg('menu');
-    el('splitToggle').innerHTML = svg('split');
-    el('diagToggle').innerHTML = svg('diagram');
-    el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon');
-    el('newRecBtn').innerHTML = svg('plus');
+    el('sidebarToggle').innerHTML = svg('menu'); el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon');
+    el('resetBtn').innerHTML = svg('reset'); el('apiBtn').innerHTML = svg('api'); el('newRecBtn').innerHTML = svg('plus'); el('searchIcon').innerHTML = svg('search');
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
-    this.checkHealth();
-    await this.loadRecords();
-    if (state.records.length) await this.select(state.records[0].id);
-    else this.renderAllSlots();
+    state.dock = loadDock();
+    this.checkHealth(); await this.loadRecords();
+    if (state.records.length) await this.select(state.records[0].id); else renderDock();
   },
+  async checkHealth() { try { const h = await api.get('/api/health'); el('statusDot').className = 'dot ' + (h.model_ready ? 'ok' : 'bad'); el('statusText').textContent = h.model_ready ? h.model : (h.models.length ? h.model + ' (not pulled)' : 'Ollama offline'); } catch { el('statusDot').className = 'dot bad'; el('statusText').textContent = 'Ollama offline'; } },
 
-  async checkHealth() {
-    try { const h = await api.get('/api/health');
-      el('statusDot').className = 'dot ' + (h.model_ready ? 'ok' : 'bad');
-      el('statusText').textContent = h.model_ready ? h.model : (h.models.length ? h.model + ' (not pulled)' : 'Ollama offline');
-    } catch { el('statusDot').className = 'dot bad'; el('statusText').textContent = 'Ollama offline'; }
-  },
-
-  // ---------- records ----------
-  async loadRecords() {
-    state.records = await api.get('/api/vehicles');
-    el('recordList').innerHTML = state.records.map(v => `
-      <div class="rec-item ${state.current && state.current.id === v.id ? 'active' : ''}" onclick="ui.select(${v.id})">
-        <div class="name">${esc(v.label || [v.year, v.make, v.model].filter(Boolean).join(' ') || 'Untitled record')}</div>
-        <div class="meta">${svg('vehicle')} ${esc(v.vin || 'no VIN')}</div>
-      </div>`).join('') || '<p class="muted" style="padding:8px">No records yet. Create one with +.</p>';
-  },
-  async newRecord() {
-    const v = await api.send('/api/vehicles', 'POST', { label: 'New record' });
-    await this.loadRecords(); this.select(v.id);
-  },
-  async select(id) {
-    state.current = await api.get('/api/vehicles/' + id);
-    state.page = 0; state.selectedPin = null; state.plan = '';
-    await this.loadRecords(); this.renderAllSlots();
-  },
-
-  // ---------- layout ----------
   toggleSidebar() { state.sidebar = !state.sidebar; el('sidebar').classList.toggle('collapsed', !state.sidebar); },
-  toggleSplit() {
-    state.layout.rightBottom = state.layout.rightBottom ? null : (state.layout.rightTop === 'chat' ? 'pinout' : 'chat');
-    el('slot-rightBottom').classList.toggle('hidden', !state.layout.rightBottom);
-    el('splitToggle').classList.toggle('active', !!state.layout.rightBottom);
-    this.renderAllSlots();
-  },
-  toggleDiagram() { state.leftOn = !state.leftOn; el('slot-left').classList.toggle('collapsed', !state.leftOn); el('diagToggle').classList.toggle('active', state.leftOn); },
   toggleTheme() { state.theme = state.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = state.theme; localStorage.setItem('canopy-theme', state.theme); el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon'); },
+  resetLayout() { state.dock = defaultDock(); saveDock(); renderDock(); },
+  openView(v) { ensureView(v); },
+  handleDrop(group, v, side) { const from = groupOfView(state.dock, v);
+    if (side === 'center') { if (from !== group) { removeViewFromGroup(v); group.tabs.push(v); } group.active = v; }
+    else { if (from === group && from.tabs.length === 1) { state.drag = null; return; } removeViewFromGroup(v); splitWith(group, v, side); }
+    state.drag = null; saveDock(); renderDock(); },
 
-  setSlotView(slotKey, view) {
-    for (const k of Object.keys(SLOTS)) if (k !== slotKey && state.layout[k] === view) state.layout[k] = (slotKey === 'left' ? 'diagram' : VIEWS.find(v => v.key !== view).key);
-    state.layout[slotKey] = view; this.renderAllSlots();
+  // ---------- records / projects ----------
+  async loadRecords() { state.records = await api.get('/api/vehicles'); this.renderRecords(); },
+  renderRecords() {
+    const q = (el('projSearch')?.value || '').toLowerCase(), sort = el('projSort')?.value || 'recent', grp = el('projGroup')?.value || 'none';
+    let recs = state.records.filter(v => { const hay = [v.label, v.vin, v.make, v.model, v.year, ...(v.tags || [])].join(' ').toLowerCase(); return !q || hay.includes(q); });
+    recs = recs.slice().sort((a, b) => sort === 'title' ? (a.label || '').localeCompare(b.label || '') : (b.created_at || '').localeCompare(a.created_at || ''));
+    const card = v => `<div class="rec-item ${state.current && state.current.id === v.id ? 'active' : ''}" onclick="ui.select(${v.id})">
+      <div class="name">${esc(v.label || [v.year, v.make, v.model].filter(Boolean).join(' ') || 'Untitled')}</div>
+      ${(v.tags || []).length ? `<div class="tags">${v.tags.slice(0, 6).map(t => `<span class="tagchip">${esc(t)}</span>`).join('')}</div>` : ''}</div>`;
+    let html = '';
+    if (grp === 'none') html = recs.map(card).join('');
+    else { const groups = {}; recs.forEach(v => { const key = (v[grp] || (v.tags || []).find(Boolean) || '—'); (groups[key] = groups[key] || []).push(v); });
+      html = Object.keys(groups).sort().map(k => `<div class="group-label">${esc(k)}</div>` + groups[k].map(card).join('')).join(''); }
+    el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
+  async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; this.renderRecords(); renderDock(); },
 
-  renderAllSlots() { el('diagToggle').classList.toggle('active', state.leftOn); el('splitToggle').classList.toggle('active', !!state.layout.rightBottom); for (const k of Object.keys(SLOTS)) this.renderSlot(k); },
-  renderSlot(slotKey) {
-    const view = state.layout[slotKey]; const host = el(SLOTS[slotKey]); if (!view) { host.innerHTML = ''; return; }
-    const tabs = VIEWS.map(v => `<div class="tab ${v.key === view ? 'active' : ''}" onclick="ui.setSlotView('${slotKey}','${v.key}')">${svg(v.icon)} ${v.label}</div>`).join('');
-    host.innerHTML = `<div class="tabstrip">${tabs}</div><div class="panel-content" id="content-${slotKey}"></div>`;
-    const c = el('content-' + slotKey);
-    if (!state.current) { c.innerHTML = '<div class="empty">Select or create a record on the left to begin.</div>'; return; }
-    ({ diagram: this.viewDiagram, pinout: this.viewPinout, plan: this.viewPlan, chat: this.viewChat, memories: this.viewMemories, vehicle: this.viewVehicle })[view].call(this, c);
-  },
-
-  // ---------- views ----------
+  // ---------- diagram ----------
   viewDiagram(c) {
-    const d = (state.current.diagrams || [])[0];
-    state.diagramId = d ? d.id : null; state.pageTotal = d ? (d.pages || 1) : 1;
-    if (!d) {
-      c.innerHTML = `<div id="dz" class="dropzone">${svg('upload')}<div style="margin-top:8px"><strong>Drop</strong> a wiring diagram (image or PDF), or click to choose.</div></div>`;
-    } else {
-      const nav = state.pageTotal > 1 ? `<div class="pagenav"><button class="iconbtn" onclick="ui.pageStep(-1)">${svg('prev')}</button>
-        Page <input type="number" min="1" max="${state.pageTotal}" value="${state.page + 1}" onchange="ui.gotoPage(this.value-1)"> / ${state.pageTotal}
-        <button class="iconbtn" onclick="ui.pageStep(1)">${svg('next')}</button></div>` : '';
-      c.innerHTML = `
-        <div class="row" style="margin-bottom:10px">
-          <button class="primary" onclick="ui.extract(false)" id="exBtn">${svg('bolt')} Extract this page</button>
-          <button onclick="ui.extract(true)" id="exAllBtn">Extract all pages</button>
-          <button onclick="ui.identify()" id="idBtn">Identify vehicle</button>
-          <button class="ghost" onclick="el('fileInput').click()">${svg('upload')} Replace</button>
-        </div>
-        ${nav}
-        <div class="diagram-wrap"><img src="/api/diagram/${d.id}/image?page=${state.page}&t=${Date.now()}" alt="diagram page ${state.page + 1}"></div>`;
-    }
-    const dz = el('dz'); if (dz) { dz.onclick = () => el('fileInput').click();
-      ['dragover', 'dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.toggle('drag', ev === 'dragover'); if (ev === 'drop' && e.dataTransfer.files[0]) this.uploadFile(e.dataTransfer.files[0]); })); }
+    const d = (state.current.diagrams || [])[0]; state.diagramId = d ? d.id : null; state.pageTotal = d ? (d.pages || 1) : 1;
+    if (!d) { c.innerHTML = `<div id="dz" class="dropzone">${svg('upload')}<div style="margin-top:8px"><strong>Drop</strong> a wiring diagram (image or PDF), or click.</div></div>`; }
+    else { const nav = state.pageTotal > 1 ? `<div class="pagenav"><button class="iconbtn" onclick="ui.pageStep(-1)">${svg('prev')}</button>
+      <input type="number" min="1" max="${state.pageTotal}" value="${state.page + 1}" onchange="ui.gotoPage(this.value-1)"> / ${state.pageTotal}<button class="iconbtn" onclick="ui.pageStep(1)">${svg('next')}</button></div>` : '';
+      c.innerHTML = `<div class="diag-toolbar"><button class="primary" onclick="ui.extract(false)" id="exBtn">${svg('bolt')} Extract page</button>
+        <button onclick="ui.extract(true)" id="exAllBtn">All pages</button><button onclick="ui.identify()" id="idBtn">Identify</button>${nav}
+        <div class="zoomctl"><button class="iconbtn" onclick="ui.zoom(-1)">${svg('zout')}</button><span id="zlbl">${Math.round(state.zoom * 100)}%</span><button class="iconbtn" onclick="ui.zoom(1)">${svg('zin')}</button><button class="iconbtn" title="Fit" onclick="ui.zoom(0)">${svg('reset')}</button></div></div>
+        <div class="diag-scroll"><img id="diagImg" src="/api/diagram/${d.id}/image?page=${state.page}&t=${Date.now()}" style="width:${state.zoom * 100}%"></div>`; }
+    const dz = c.querySelector('#dz'); if (dz) { dz.onclick = () => el('fileInput').click(); ['dragover', 'dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.toggle('drag', ev === 'dragover'); if (ev === 'drop' && e.dataTransfer.files[0]) this.uploadFile(e.dataTransfer.files[0]); })); }
   },
+  zoom(dir) { state.zoom = dir === 0 ? 1 : Math.max(0.25, Math.min(5, state.zoom + dir * 0.25)); const img = el('diagImg'); if (img) img.style.width = (state.zoom * 100) + '%'; const z = el('zlbl'); if (z) z.textContent = Math.round(state.zoom * 100) + '%'; },
+  pageStep(d) { this.gotoPage(state.page + d); },
+  gotoPage(n) { state.page = Math.max(0, Math.min(state.pageTotal - 1, parseInt(n) || 0)); rerenderView('diagram'); },
 
+  // ---------- pinout ----------
   viewPinout(c) {
-    const pins = state.current.pinouts || [];
-    let detail = '';
-    if (state.selectedPin != null && pins[state.selectedPin]) {
-      const p = pins[state.selectedPin]; const r = (l, v) => v ? `<div>${l}</div><div><b>${esc(v)}</b></div>` : '';
+    const pins = state.current.pinouts || []; let detail = '';
+    if (state.selectedPin != null && pins[state.selectedPin]) { const p = pins[state.selectedPin]; const r = (l, v) => v ? `<div>${l}</div><div><b>${esc(v)}</b></div>` : '';
       detail = `<div class="pin-detail"><div class="pd-top"><span class="pd-pin">Pin ${esc(p.pin)}</span><span class="pd-sig">${esc(p.signal || '')}</span><span class="pd-close" onclick="ui.selectPin(null)">${svg('close')}</span></div>
-        <div class="pd-func">${esc(p.function || 'No plain-language function recorded.')}</div>
-        <div class="pd-grid">${r('Connector', p.connector)}${r('Circuit', p.circuit)}${r('Wire color', p.wire_color)}${r('Connects to', p.connects_to)}${r('Page', p.page != null ? p.page + 1 : '')}</div></div>`;
-    }
-    if (!pins.length) { c.innerHTML = detail + '<p class="muted">No pinout yet. Open the Diagram tab, go to a connector page, and click “Extract this page”.</p>'; return; }
+        <div class="pd-func">${esc(p.function || 'No function recorded.')}</div><div class="pd-grid">${r('Connector', p.connector)}${r('Circuit', p.circuit)}${r('Wire', p.wire_color)}${r('Connects to', p.connects_to)}${r('Page', p.page != null ? p.page + 1 : '')}</div></div>`; }
+    if (!pins.length) { c.innerHTML = `<div class="pin-sticky">${detail || ''}<input placeholder="Filter pins…" disabled></div><p class="muted">No pinout yet. On the Diagram, go to a connector page and click “Extract page”.</p>`; return; }
     const conns = [...new Set(pins.map(p => p.connector || ''))];
     let body = '';
-    for (const conn of conns) {
-      const g = pins.filter(p => (p.connector || '') === conn);
-      body += `<div class="conn-group">${esc(conn || 'Connector')} · ${g.length} pins</div><table><tbody>${
-        g.map(p => { const i = pins.indexOf(p); const sc = sigClass(p.signal);
-          const badge = sc ? `<span class="badge ${sc}">${sc.toUpperCase()}</span> ` : '';
-          return `<tr class="pin-row ${i === state.selectedPin ? 'sel' : ''}" onclick="ui.selectPin(${i})"><td style="width:48px"><b>${esc(p.pin)}</b></td><td>${badge}${esc(p.signal)}</td><td class="muted">${esc(p.function || '')}</td></tr>`;
-        }).join('')}</tbody></table>`;
-    }
-    c.innerHTML = detail + `<div class="filter-box"><input placeholder="Filter pins…" oninput="ui.filterPins(this.value)"></div><div id="pinBody">${body}</div>`;
+    for (const conn of conns) { const g = pins.filter(p => (p.connector || '') === conn);
+      body += `<div class="conn-group">${esc(conn || 'Connector')} · ${g.length}</div><table><tbody>${g.map(p => { const i = pins.indexOf(p), sc = sigClass(p.signal); const b = sc ? `<span class="badge ${sc}">${sc.toUpperCase()}</span> ` : '';
+        return `<tr class="pin-row ${i === state.selectedPin ? 'sel' : ''}" onclick="ui.selectPin(${i})"><td style="width:42px"><b>${esc(p.pin)}</b></td><td>${b}${esc(p.signal)}</td><td class="muted">${esc(p.function || '')}</td></tr>`; }).join('')}</tbody></table>`; }
+    c.innerHTML = `<div class="pin-sticky">${detail}<input placeholder="Filter pins…" oninput="ui.filterPins(this.value)"></div><div id="pinBody">${body}</div>`;
   },
-  filterPins(q) {
-    q = (q || '').toLowerCase();
-    document.querySelectorAll('#pinBody tr.pin-row').forEach(tr => { tr.style.display = !q || tr.textContent.toLowerCase().includes(q) ? '' : 'none'; });
-  },
-
-  viewPlan(c) {
-    c.innerHTML = `<div class="row" style="margin-bottom:10px"><button class="primary" onclick="ui.canPlan()" id="planBtn">${svg('bolt')} Generate CAN wiring plan</button></div>
-      ${state.plan ? `<div class="md">${md(state.plan)}</div><p class="warn">${svg('warn')} Verify power &amp; ground pins by hand and set the PSU current limit before energizing.</p>` : '<p class="muted">Generate a step-by-step bench connection plan from the extracted pinout. Pin numbers in the plan are hoverable.</p>'}`;
-  },
-
-  viewChat(c) {
-    const msgs = state.current.messages || [];
-    c.innerHTML = `<div class="chat">
-      <div class="chips">
-        <span class="chip" onclick="ui.ask('How do I wire this module to communicate over CAN?')">How to wire for CAN?</span>
-        <span class="chip" onclick="ui.ask('How can I simulate a test on the A/C clutch relay in this vehicle?')">Simulate A/C clutch relay</span>
-        <span class="chip" onclick="ui.ask('Which pins are power, ground, CAN-H and CAN-L?')">Power / GND / CAN pins</span>
-      </div>
-      <div class="messages" id="msgs">${msgs.map(m => `<div class="msg ${m.role}"><div class="md">${md(m.content)}</div></div>`).join('')}</div>
-      <div class="chat-input"><textarea id="chatIn" placeholder="Ask about this wiring diagram…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ui.send();}"></textarea><button class="primary" onclick="ui.send()">Send</button></div>
-      <label class="toggle"><input type="checkbox" id="autoMem" checked> Auto-save new, salient facts to memory</label></div>`;
-    const m = el('msgs'); if (m) m.scrollTop = m.scrollHeight;
-  },
-
-  viewMemories(c) {
-    const mems = state.current.memories || [];
-    c.innerHTML = `<div class="chat-input" style="margin-bottom:12px"><input id="memIn" placeholder="Add a fact to remember…"><button onclick="ui.addMemory()">Save</button></div>
-      ${mems.map(m => `<div class="memory"><span class="kind ${m.kind === 'auto' ? 'auto' : ''}">${esc(m.kind)}</span><div style="flex:1">${esc(m.content)}</div><button class="iconbtn danger" onclick="ui.delMemory(${m.id})">${svg('close')}</button></div>`).join('') || '<p class="muted">No memories yet. They are saved manually or auto-distilled from chat.</p>'}`;
-  },
-
-  viewVehicle(c) {
-    const v = state.current;
-    c.innerHTML = `<h3 class="sec">Record details</h3>
-      <div class="row"><label class="field" style="flex:1"><span>Label</span><input id="f_label" value="${esc(v.label || '')}" placeholder="e.g. 2016 F-250 PCM"></label></div>
-      <div class="row"><label class="field" style="flex:2"><span>VIN</span><input id="f_vin" value="${esc(v.vin || '')}"></label>
-        <label class="field"><span>Year</span><input id="f_year" value="${esc(v.year || '')}"></label></div>
-      <div class="row"><label class="field" style="flex:1"><span>Make</span><input id="f_make" value="${esc(v.make || '')}"></label>
-        <label class="field" style="flex:1"><span>Model</span><input id="f_model" value="${esc(v.model || '')}"></label></div>
-      <div class="row"><button class="primary" onclick="ui.saveVehicle()">Save</button><button onclick="ui.identify()">Identify from diagram</button><button class="ghost danger" onclick="ui.deleteVehicle()">Delete record</button></div>`;
-  },
-
-  // ---------- diagram actions ----------
-  pageStep(d) { this.gotoPage(state.page + d); },
-  gotoPage(n) { state.page = Math.max(0, Math.min(state.pageTotal - 1, parseInt(n) || 0)); this.renderSlotsWith('diagram'); },
-  renderSlotsWith(view) { for (const k of Object.keys(SLOTS)) if (state.layout[k] === view) this.renderSlot(k); },
-  ensureView(view) { if (!Object.values(state.layout).includes(view)) { if (view === 'diagram' && state.leftOn === false) { state.leftOn = true; el('slot-left').classList.remove('collapsed'); } state.layout[view === 'diagram' ? 'left' : 'rightTop'] = view; this.renderAllSlots(); } },
-
-  async uploadFile(file) {
-    if (!state.current) return;
-    try { await api.upload(`/api/vehicles/${state.current.id}/diagram`, file); await this.select(state.current.id); }
-    catch (e) { alert('Upload failed: ' + e.message); }
-  },
-  async busy(id, label, fn) { const b = el(id); const old = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.innerHTML = `<span class="spinner"></span> ${label}`; } try { return await fn(); } catch (e) { alert(e.message); } finally { if (b) { b.disabled = false; b.innerHTML = old; } } },
-
-  async extract(all) {
-    await this.busy(all ? 'exAllBtn' : 'exBtn', all ? `scanning ${state.pageTotal} pages…` : 'reading…', async () => {
-      const r = await api.send(`/api/vehicles/${state.current.id}/extract`, 'POST', { page: state.page, all_pages: !!all });
-      state.current.pinouts = r.pinouts; this.ensureView('pinout'); this.renderSlotsWith('pinout');
-    });
-  },
-  async identify() {
-    await this.busy('idBtn', 'identifying…', async () => {
-      const v = await api.send(`/api/vehicles/${state.current.id}/identify`, 'POST', { page: state.page });
-      Object.assign(state.current, v); this.loadRecords(); this.renderSlotsWith('vehicle');
-    });
-  },
-  async canPlan() {
-    await this.busy('planBtn', 'planning…', async () => {
-      const r = await api.send(`/api/vehicles/${state.current.id}/can-plan`, 'POST', { page: state.page });
-      state.plan = r.plan; this.renderSlotsWith('plan');
-    });
-  },
-
-  // ---------- pinout actions ----------
-  selectPin(idx) {
-    state.selectedPin = idx;
-    if (idx != null) { const p = state.current.pinouts[idx]; if (p && p.page != null) { state.page = p.page; this.ensureView('diagram'); this.renderSlotsWith('diagram'); } }
-    this.renderSlotsWith('pinout');
-  },
-  gotoPinPage(n) { const p = pinIndex()[n]; if (p && p.page != null) { state.page = p.page; this.ensureView('diagram'); this.renderSlotsWith('diagram'); } this.hideTip(); },
-
-  // ---------- tooltip ----------
-  pinTip(ev, n) {
-    const p = pinIndex()[n]; if (!p) return; const t = el('tooltip');
-    t.innerHTML = `<div><span class="tt-pin">Pin ${esc(p.pin)}</span> <span class="tt-sig">${esc(p.signal || '')}</span></div>
-      <div class="tt-row">${esc(p.function || '')}</div>${p.connector ? `<div class="tt-row">${esc(p.connector)}${p.page != null ? ' · page ' + (p.page + 1) : ''}</div>` : ''}<div class="tt-row">click to open that page</div>`;
-    t.style.display = 'block'; const x = Math.min(ev.clientX + 14, window.innerWidth - 300); t.style.left = x + 'px'; t.style.top = (ev.clientY + 16) + 'px';
-  },
+  filterPins(q) { q = (q || '').toLowerCase(); document.querySelectorAll('#pinBody tr.pin-row').forEach(tr => tr.style.display = !q || tr.textContent.toLowerCase().includes(q) ? '' : 'none'); },
+  selectPin(idx) { state.selectedPin = idx; if (idx != null) { const p = state.current.pinouts[idx]; if (p && p.page != null) { state.page = p.page; ensureView('diagram'); } } rerenderView('pinout'); rerenderView('diagram'); },
+  gotoPinPage(n) { const p = pinIndex()[n]; if (p && p.page != null) { state.page = p.page; ensureView('diagram'); rerenderView('diagram'); } this.hideTip(); },
+  pinTip(ev, n) { const p = pinIndex()[n]; if (!p) return; const t = el('tooltip'); t.innerHTML = `<div><span class="tt-pin">Pin ${esc(p.pin)}</span> <span class="tt-sig">${esc(p.signal || '')}</span></div><div class="tt-row">${esc(p.function || '')}</div>${p.connector ? `<div class="tt-row">${esc(p.connector)}${p.page != null ? ' · page ' + (p.page + 1) : ''} · click to open</div>` : ''}`; t.style.display = 'block'; t.style.left = Math.min(ev.clientX + 14, innerWidth - 300) + 'px'; t.style.top = (ev.clientY + 16) + 'px'; },
   hideTip() { el('tooltip').style.display = 'none'; },
 
-  // ---------- vehicle/memories ----------
-  async saveVehicle() {
-    const g = id => el(id) ? el(id).value : undefined;
-    state.current = await api.send('/api/vehicles/' + state.current.id, 'PATCH', { label: g('f_label'), vin: g('f_vin'), year: g('f_year'), make: g('f_make'), model: g('f_model') });
-    state.current = await api.get('/api/vehicles/' + state.current.id); this.loadRecords(); this.renderAllSlots();
-  },
-  async deleteVehicle() {
-    if (!confirm('Delete this record and its diagrams/memories?')) return;
-    await api.send('/api/vehicles/' + state.current.id, 'DELETE'); state.current = null; await this.loadRecords(); this.renderAllSlots();
-  },
+  // ---------- plan ----------
+  viewPlan(c) { c.innerHTML = `<div class="row" style="margin-bottom:10px"><button class="primary" onclick="ui.canPlan()" id="planBtn">${svg('bolt')} Generate CAN wiring plan</button></div>
+    ${state.plan ? `<div class="md">${md(state.plan)}</div><p class="warn">${svg('warn')} Verify power &amp; ground pins by hand and set the PSU current limit before energizing.</p>` : '<p class="muted">Generates a bench connection plan from the extracted pinout. Pin numbers are hover-able.</p>'}`; },
+
+  // ---------- chat ----------
+  viewChat(c) { const msgs = state.current.messages || [];
+    c.innerHTML = `<div class="chat"><div class="chips">
+      <span class="chip" onclick="ui.ask('How do I wire this module to communicate over CAN?')">Wire for CAN</span>
+      <span class="chip" onclick="ui.ask('How can I simulate a test on the A/C clutch relay in this vehicle?')">Simulate A/C clutch relay</span>
+      <span class="chip" onclick="ui.ask('Which pins are power, ground, CAN-H and CAN-L?')">Power/GND/CAN pins</span></div>
+      <div class="messages" id="msgs">${msgs.map(m => `<div class="msg ${m.role}"><div class="md">${md(m.content)}</div></div>`).join('')}</div>
+      <div class="chat-input"><textarea id="chatIn" placeholder="Ask about this diagram…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ui.send();}"></textarea><button class="primary" onclick="ui.send()">Send</button></div>
+      <label class="toggle"><input type="checkbox" id="autoMem" checked> Auto-save new, salient facts to memory</label></div>`;
+    const m = el('msgs'); if (m) m.scrollTop = m.scrollHeight; },
+
+  // ---------- memories ----------
+  viewMemories(c) { const mems = state.current.memories || [];
+    c.innerHTML = `<div class="chat-input" style="margin-bottom:12px"><input id="memIn" placeholder="Add a fact to remember…"><button onclick="ui.addMemory()">Save</button></div>
+      ${mems.map(m => `<div class="memory"><span class="kind ${m.kind === 'auto' ? 'auto' : ''}">${esc(m.kind)}</span><div style="flex:1">${esc(m.content)}</div><button class="iconbtn danger" onclick="ui.delMemory(${m.id})">${svg('close')}</button></div>`).join('') || '<p class="muted">No memories yet — saved manually or auto-distilled from chat (semantically de-duplicated).</p>'}`; },
+
+  // ---------- record + tags ----------
+  viewRecord(c) { const v = state.current;
+    c.innerHTML = `<h3 class="sec">Project details</h3>
+      <label class="field"><span>Label</span><input id="f_label" value="${esc(v.label || '')}" placeholder="e.g. 2016 F-250 PCM"></label>
+      <div class="row"><label class="field" style="flex:2"><span>VIN</span><input id="f_vin" value="${esc(v.vin || '')}"></label><label class="field"><span>Year</span><input id="f_year" value="${esc(v.year || '')}"></label></div>
+      <div class="row"><label class="field" style="flex:1"><span>Make</span><input id="f_make" value="${esc(v.make || '')}"></label><label class="field" style="flex:1"><span>Model</span><input id="f_model" value="${esc(v.model || '')}"></label></div>
+      <div class="row" style="margin-bottom:14px"><button class="primary" onclick="ui.saveVehicle()">Save</button><button onclick="ui.identify()">Identify from diagram</button><button class="ghost danger" onclick="ui.deleteVehicle()">Delete</button></div>
+      <h3 class="sec">Tags</h3><div class="tags" style="margin-bottom:10px">${(v.tags || []).map(t => `<span class="tagchip rm" onclick="ui.removeTag('${esc(t).replace(/'/g, "")}')">${esc(t)} ✕</span>`).join('') || '<span class="muted">No tags.</span>'}</div>
+      <div class="chat-input"><input id="tagIn" placeholder="Add a tag (e.g. Duramax)" onkeydown="if(event.key==='Enter')ui.addTag()"><button onclick="ui.addTag()">${svg('tag')} Add</button><button onclick="ui.extractTags()" id="tagAiBtn">${svg('bolt')} AI tags</button></div>`; },
+
+  // ---------- api docs ----------
+  async viewApi(c) { if (!state.apiRef) { c.innerHTML = '<p class="muted">Loading API reference…</p>'; try { state.apiRef = await api.get('/api/reference'); } catch { c.innerHTML = '<p class="warn">Could not load reference.</p>'; return; } }
+    const ref = state.apiRef;
+    c.innerHTML = `<h3 class="sec">REST API</h3><p class="muted">All endpoints are local. Interactive Swagger: <a href="${ref.swagger}" target="_blank">${ref.swagger}</a> · OpenAPI: <a href="${ref.openapi}" target="_blank">${ref.openapi}</a> (import into Postman).</p>
+      ${ref.groups.map(gr => `<div class="api-group"><h4>${esc(gr.group)}</h4>${gr.endpoints.map(e => `<div class="api-ep"><div><span class="m">${esc(e.method)}</span> <span class="p">${esc(e.path)}</span></div><div class="u">${esc(e.use)}</div>${e.example ? `<pre>${esc(e.example)}</pre>` : ''}</div>`).join('')}</div>`).join('')}`; },
+
+  // ---------- actions ----------
+  async uploadFile(file) { if (!state.current) return; try { await api.upload(`/api/vehicles/${state.current.id}/diagram`, file); await this.select(state.current.id); ensureView('diagram'); } catch (e) { alert('Upload failed: ' + e.message); } },
+  async busy(id, label, fn) { const b = el(id); const old = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.innerHTML = `<span class="spinner"></span> ${label}`; } try { return await fn(); } catch (e) { alert(e.message); } finally { if (b) { b.disabled = false; b.innerHTML = old; } } },
+  async extract(all) { await this.busy(all ? 'exAllBtn' : 'exBtn', all ? `scanning ${state.pageTotal}…` : 'reading…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/extract`, 'POST', { page: state.page, all_pages: !!all }); state.current.pinouts = r.pinouts; ensureView('pinout'); rerenderView('pinout'); }); },
+  async identify() { await this.busy('idBtn', 'identifying…', async () => { const v = await api.send(`/api/vehicles/${state.current.id}/identify`, 'POST', { page: state.page }); Object.assign(state.current, v); this.loadRecords(); rerenderView('record'); }); },
+  async canPlan() { await this.busy('planBtn', 'planning…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/can-plan`, 'POST', { page: state.page }); state.plan = r.plan; rerenderView('plan'); }); },
+  async saveVehicle() { const g = id => el(id) ? el(id).value : undefined; await api.send('/api/vehicles/' + state.current.id, 'PATCH', { label: g('f_label'), vin: g('f_vin'), year: g('f_year'), make: g('f_make'), model: g('f_model') }); state.current = await api.get('/api/vehicles/' + state.current.id); this.loadRecords(); rerenderView('record'); },
+  async deleteVehicle() { if (!confirm('Delete this project?')) return; await api.send('/api/vehicles/' + state.current.id, 'DELETE'); state.current = null; await this.loadRecords(); renderDock(); },
+  async addTag() { const i = el('tagIn'); if (!i || !i.value.trim()) return; state.current.tags = await api.send(`/api/vehicles/${state.current.id}/tags`, 'POST', { tag: i.value.trim() }); this.loadRecords(); rerenderView('record'); },
+  async removeTag(t) { state.current.tags = await api.send(`/api/vehicles/${state.current.id}/tags/${encodeURIComponent(t)}`, 'DELETE'); this.loadRecords(); rerenderView('record'); },
+  async extractTags() { await this.busy('tagAiBtn', 'tagging…', async () => { const r = await api.send(`/api/vehicles/${state.current.id}/extract-tags`, 'POST', { page: state.page }); state.current.tags = r.tags; this.loadRecords(); rerenderView('record'); }); },
   async addMemory() { const i = el('memIn'); if (!i || !i.value.trim()) return; await api.send(`/api/vehicles/${state.current.id}/memories`, 'POST', { content: i.value.trim() }); await this.refreshMemories(); },
   async delMemory(id) { await api.send('/api/memories/' + id, 'DELETE'); await this.refreshMemories(); },
-  async refreshMemories() { state.current.memories = await api.get(`/api/vehicles/${state.current.id}/memories`); this.renderSlotsWith('memories'); },
+  async refreshMemories() { state.current.memories = await api.get(`/api/vehicles/${state.current.id}/memories`); rerenderView('memories'); },
 
-  // ---------- chat (streaming) ----------
-  ask(q) { this.ensureView('chat'); const i = el('chatIn'); if (i) i.value = q; this.send(q); },
-  async send(forced) {
-    const input = el('chatIn'); const q = (forced || (input ? input.value : '')).trim();
-    if (!q || !state.current) return; if (input) input.value = '';
-    const auto = el('autoMem') ? el('autoMem').checked : true;
-    const box = el('msgs'); if (!box) { this.ensureView('chat'); }
-    const msgs = el('msgs');
+  // ---------- chat streaming ----------
+  ask(q) { ensureView('chat'); const i = el('chatIn'); if (i) i.value = q; this.send(q); },
+  async send(forced) { const input = el('chatIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q || !state.current) return; if (input) input.value = '';
+    const auto = el('autoMem') ? el('autoMem').checked : true; if (!el('msgs')) ensureView('chat'); const msgs = el('msgs');
     msgs.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div></div>`);
-    const aId = 'a' + Date.now();
-    msgs.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`);
-    msgs.scrollTop = msgs.scrollHeight;
-    state.current.messages = [...(state.current.messages || []), { role: 'user', content: q }];
-    let full = '';
-    try {
-      await this.stream(`/api/vehicles/${state.current.id}/chat/stream`, { message: q, save_memories: auto, page: state.page },
-        tok => { full += tok; const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); msgs.scrollTop = msgs.scrollHeight; } },
-        done => { const m = el(aId + '-md'); if (m) m.classList.remove('cursor-blink'); state.current.messages.push({ role: 'assistant', content: full }); if (done.saved_memories && done.saved_memories.length) this.refreshMemories(); },
-        e => { const el2 = el(aId); if (el2) el2.innerHTML = `<span class="warn">${esc(e)}</span>`; });
-    } catch (e) { const el2 = el(aId); if (el2) el2.innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
-  },
-  async stream(url, body, onTok, onDone, onErr) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const aId = 'a' + Date.now(); msgs.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`); msgs.scrollTop = msgs.scrollHeight;
+    state.current.messages = [...(state.current.messages || []), { role: 'user', content: q }]; let full = '';
+    try { await this.stream(`/api/vehicles/${state.current.id}/chat/stream`, { message: q, save_memories: auto, page: state.page },
+      tok => { full += tok; const t = el(aId)?.querySelector('.thinking'); if (t) t.remove(); const m = el(aId + '-md'); if (m) { m.innerHTML = md(full); const b = el('msgs'); if (b) b.scrollTop = b.scrollHeight; } },
+      done => { const m = el(aId + '-md'); if (m) m.classList.remove('cursor-blink'); state.current.messages.push({ role: 'assistant', content: full }); if (done.saved_memories && done.saved_memories.length) this.refreshMemories(); },
+      e => { const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e)}</span>`; }); }
+    catch (e) { const x = el(aId); if (x) x.innerHTML = `<span class="warn">${esc(e.message)}</span>`; } },
+  async stream(url, body, onTok, onDone, onErr) { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) { onErr((await r.json().catch(() => ({}))).detail || 'request failed'); return; }
-    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = '';
-    while (true) {
-      const { value, done } = await reader.read(); if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const events = buf.split('\n\n'); buf = events.pop();
-      for (const ev of events) {
-        const ml = ev.match(/event: (\w+)/); const dl = ev.match(/data: (.*)/s); if (!ml || !dl) continue;
-        const type = ml[1]; let data; try { data = JSON.parse(dl[1]); } catch { data = dl[1]; }
-        if (type === 'token') onTok(data); else if (type === 'done') onDone(data); else if (type === 'error') onErr(data);
-      }
-    }
-  },
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+    while (true) { const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true }); const evs = buf.split('\n\n'); buf = evs.pop();
+      for (const ev of evs) { const ml = ev.match(/event: (\w+)/), dl = ev.match(/data: (.*)/s); if (!ml || !dl) continue; let data; try { data = JSON.parse(dl[1]); } catch { data = dl[1]; }
+        if (ml[1] === 'token') onTok(data); else if (ml[1] === 'done') onDone(data); else if (ml[1] === 'error') onErr(data); } } },
 };
 ui.init();
