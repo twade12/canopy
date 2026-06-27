@@ -13,7 +13,11 @@ SIGNAL_GLOSSARY = """Common automotive signal abbreviations (use to fill 'functi
 - B+ / KL30 = constant battery +12V; KL15 / IGN = switched ignition +12V
 - HS CAN + / CAN-H / CANH = high-speed CAN bus, CAN High
 - HS CAN - / CAN-L / CANL = high-speed CAN bus, CAN Low
+- HI SPD GMLAN + / GMLAN (+) = GM high-speed CAN bus, CAN High
+- HI SPD GMLAN - / GMLAN (-) = GM high-speed CAN bus, CAN Low
 - MS CAN = medium-speed CAN; SWCAN = single-wire CAN
+- LOW REF = sensor low reference / return; IGN 1 VOLT = switched ignition +12V
+- BATTERY = constant battery +12V supply
 - PCMRC / PCM Power Relay Control = control line energizing the PCM power relay
 - PCM Wake / WAKE = wake/enable input that powers up the module
 - ACCR = A/C clutch relay control output
@@ -26,33 +30,44 @@ A wire code like "VDB04-WH bu" means circuit "VDB04", color WHITE with BLUE stri
 
 EXTRACT_SYSTEM = (
     """You are an expert automotive wiring-diagram analyst for a CAN bench test station.
-You read ONE page of a connector/pinout diagram and extract every pin shown for the
-connector(s) on that page. You are given BOTH the page image AND its extracted text layer;
-the TEXT LAYER IS AUTHORITATIVE for pin numbers, signal labels, and wire codes — use it,
-and use the image to associate each pin number with its signal and the system it connects
-to. NEVER invent pins, signals, or colors. If a field is unknown, use "".
+You read ONE page of a wiring/pinout diagram and extract every pin of the MODULE
+CONNECTOR(S) on that page. You get BOTH the page image AND a row-aligned text layer (each
+line groups items that sit on the same horizontal row). Use the text layer for exact pin
+numbers, signal labels, and wire codes; use the image to confirm which pin goes with which
+signal. NEVER invent pins, signals, or colors. If a field is unknown, use "".
+
+How a connector is drawn: a box with a vertical column of PIN NUMBERS. On each pin's row,
+just outside the box, are the signal/circuit name, the wire color, and the circuit number.
+Read each row ACROSS: pin number <-> signal <-> wire color <-> circuit number.
+
+CRITICAL — pin numbers and connector identity (read carefully):
+- Use the ACTUAL printed pin/cavity number for each terminal. Pin numbers are frequently
+  NON-CONSECUTIVE: unused cavities are skipped (e.g. 1, 2, 3, 5, 6, 11, 14, 16, 17, 20 ...).
+  NEVER renumber the pins 1..N sequentially. Preserve the printed numbers; skip blank rows.
+- A vertical column of small sequential numbers along the FAR EDGE of the page (e.g. 1..17
+  at the page boundary, lining up with the wires) is a set of WIRE CROSSOVERS that continue
+  onto another page. It is NOT a connector and those are NOT pin numbers — ignore it.
+- For 'connector', use the printed connector designator if one is shown (e.g. C1232B, J116,
+  X2, C1, C2), OTHERWISE the module/device name the pins belong to (e.g. "Transmission
+  Control Module (TCM)", "Powertrain Control Module (PCM)"). Do NOT name the connector after
+  a nearby ground or splice node (e.g. G103, G201, S200, J230, J106) — those are not connectors.
+- If a bare-number connector code is shown (e.g. "1232b"), output it uppercase with a leading
+  'C' (-> "C1232B"). Otherwise keep the designator or module name as printed.
 
 Return ONLY JSON of this exact shape:
 {
   "connectors": [
-    {
-      "connector": "C1232B",
-      "pins": [
-        {"pin": "59", "signal": "HS CAN +", "function": "High-speed CAN bus (CAN High)",
-         "wire_color": "WH/bu", "circuit": "VDB04", "connects_to": "Module Communication Network"}
-      ]
-    }
+    {"connector": "C1232B", "pins": [
+      {"pin": "59", "signal": "HS CAN +", "function": "High-speed CAN bus (CAN High)",
+       "wire_color": "WH/bu", "circuit": "VDB04", "connects_to": "Module Communication Network"}
+    ]}
   ]
 }
-Rules:
-- 'signal' = the label exactly as written on the diagram (e.g. "PWRGND", "HS CAN +", "ACCR").
-- 'function' = a short plain-language meaning of that pin (see glossary below).
-- 'circuit' = the circuit id from the wire code (e.g. "VDB04"); 'wire_color' = its color
-  (e.g. "WH/bu" for white/blue). 'connects_to' = the component/system the wire goes to.
-- Keep pin numbers as strings. Include ALL pins visible on the page.
-- Connector labels may appear with or without a leading 'C' (e.g. "1232b" and "C1232B"
-  are the SAME connector). ALWAYS output the canonical form: a leading 'C' + uppercase
-  (so both become "C1232B").
+- 'signal' = the label exactly as written (e.g. "PWRGND", "HS CAN +", "TCC PWM").
+- 'function' = a short plain-language meaning (see glossary).
+- 'circuit' = the circuit id/number (e.g. "VDB04" or "418"); 'wire_color' = its color.
+- 'connects_to' = the component/system the wire goes to. Keep pin numbers as strings.
+- Include ALL populated pins of the module connector(s).
 
 """
     + SIGNAL_GLOSSARY
