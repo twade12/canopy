@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg"><title>CANOPY · Admin Console</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="wordmark">CANOPY</span><span class="muted" style="font-size:12.5px">Admin Console</span>
+    <div class="spacer"></div>
+    <a class="adm-back" href="/">← Back to app</a>
+  </header>
+  <div class="adm">
+    <nav class="adm-nav" id="admNav"></nav>
+    <main class="adm-main" id="admMain"></main>
+  </div>
+  <div id="modalRoot"></div>
+  <script>
+    const el = id => document.getElementById(id);
+    const esc = s => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const SVG = {
+      plug: '<path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 01-10 0z" /><path d="M12 16v6"/>',
+      team: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0"/><circle cx="17" cy="9" r="2.4"/><path d="M15 20a5 5 0 018 0"/>',
+      org: '<rect x="4" y="9" width="16" height="11" rx="1"/><path d="M9 20v-4h6v4M9 13h.01M15 13h.01M4 9l8-5 8 5"/>',
+      key: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M17 12v4M21 12v3"/>',
+      gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M5 5l2 2M17 17l2 2M2 12h3M19 12h3M5 19l2-2M17 7l2-2"/>',
+    };
+    const svg = n => `<svg class="icon" viewBox="0 0 24 24">${SVG[n] || ''}</svg>`;
+    const api = {
+      async get(p) { const r = await fetch(p); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status); return r.json(); },
+      async send(p, m, b) { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status); return r.json(); },
+    };
+    const SECTIONS = [
+      { key: 'integrations', label: 'Integrations', icon: 'plug' },
+      { key: 'team', label: 'Team', icon: 'team' },
+      { key: 'org', label: 'Organization', icon: 'org' },
+      { key: 'keys', label: 'API Keys', icon: 'key' },
+      { key: 'settings', label: 'Settings', icon: 'gear' },
+    ];
+    let cur = 'integrations', presets = [], integrations = [];
+
+    function renderNav() {
+      el('admNav').innerHTML = SECTIONS.map(s => `<a class="adm-link ${s.key === cur ? 'on' : ''}" onclick="go('${s.key}')">${svg(s.icon)} ${s.label}</a>`).join('');
+    }
+    function go(k) { cur = k; renderNav(); render(); }
+
+    function modal(html) { el('modalRoot').innerHTML = `<div class="modal-backdrop" id="mbd" onmousedown="if(event.target===this)closeModal()"><div class="modal" style="width:min(560px,94vw)">${html}</div></div>`; }
+    function closeModal() { el('modalRoot').innerHTML = ''; }
+
+    async function render() {
+      const m = el('admMain');
+      if (cur === 'integrations') return renderIntegrations(m);
+      const stub = {
+        team: ['Team & assignments', 'Invite sub-users, group them into teams, and assign people to projects for triage. Roles &amp; access controls are managed here.'],
+        org: ['Organization', 'Define your org units — Development, New Products, Marketing, … — and route projects and reports to the right group.'],
+        keys: ['Canopy API keys', 'Generate and revoke API keys for programmatic access to this Canopy instance.'],
+        settings: ['Settings', 'Instance settings — model, data location, appearance, and deploy options.'],
+      }[cur];
+      m.innerHTML = `<div class="adm-head"><h1>${stub[0]}</h1></div><div class="adm-stub">${svg(SECTIONS.find(s => s.key === cur).icon)}<div><div class="stub-t">Coming soon</div><p>${stub[1]}</p></div></div>`;
+    }
+
+    async function renderIntegrations(m) {
+      m.innerHTML = `<div class="adm-head"><h1>Integrations</h1><button class="primary" onclick="openForm()">+ Add integration</button></div>
+        <p class="muted" style="max-width:680px">Connect Canopy's outputs (triage results, NPI records, BOMs, listings) to the tools you already use. Most are just a base URL + an auth method — add any service with the generic REST connector.</p>
+        <div id="intList" class="adm-grid"></div>`;
+      try { [presets, integrations] = await Promise.all([api.get('/api/integrations/presets'), api.get('/api/integrations')]); }
+      catch (e) { el('intList').innerHTML = `<p class="warn">${esc(e.message)}</p>`; return; }
+      el('intList').innerHTML = integrations.length ? integrations.map(card).join('') :
+        '<div class="adm-empty">No integrations yet. Click <b>+ Add integration</b> to connect Slack, Google Drive, Monday.com, Digi-Key, Mouser, WordPress, or any REST API.</div>';
+    }
+    function card(it) {
+      return `<div class="int-card ${it.enabled ? '' : 'off'}">
+        <div class="int-top"><b>${esc(it.name || it.kind)}</b><span class="int-kind">${esc(it.kind)}</span></div>
+        <div class="int-url">${esc(it.base_url || '—')}</div>
+        <div class="int-meta">auth: ${esc(it.auth_type)}${it.has_secret ? ` · key ${esc(it.secret_hint)}` : ''} · <span class="${it.enabled ? 'on' : 'muted'}">${it.enabled ? 'enabled' : 'disabled'}</span></div>
+        <div class="row" style="margin-top:10px"><button onclick="testInt(${it.id})">Test</button><button onclick="openForm(${it.id})">Edit</button><button class="ghost danger" onclick="delInt(${it.id})">Delete</button><span class="int-test" id="test-${it.id}"></span></div></div>`;
+    }
+    async function testInt(id) { const s = el('test-' + id); s.innerHTML = '<span class="spinner"></span>';
+      try { const r = await api.send(`/api/integrations/${id}/test`, 'POST'); s.innerHTML = r.ok ? `<span class="ok">reached (HTTP ${r.status || 'ok'})</span>` : `<span class="bad">${esc(r.error || 'unreachable')}</span>`; }
+      catch (e) { s.innerHTML = `<span class="bad">${esc(e.message)}</span>`; } }
+    async function delInt(id) { if (!confirm('Delete this integration?')) return; await api.send(`/api/integrations/${id}`, 'DELETE'); render(); }
+
+    function openForm(id) {
+      const it = id ? integrations.find(x => x.id === id) : { auth_type: 'none', config: {}, enabled: true, kind: 'rest' };
+      const presetChips = presets.map(p => `<span class="chip" onclick="applyPreset('${p.kind}')">${esc(p.label)}</span>`).join('');
+      modal(`<div class="m-head">${svg('plug')} ${id ? 'Edit' : 'Add'} integration</div>
+        <div class="m-body">
+          ${id ? '' : `<div class="muted" style="font-size:12px;margin-bottom:6px">Start from a preset, or fill in a generic REST API:</div><div class="chips" id="presetChips">${presetChips}</div>`}
+          <label class="field"><span>Name</span><input id="fName" value="${esc(it.name || '')}" placeholder="e.g. CBM Slack"></label>
+          <label class="field"><span>Base URL</span><input id="fUrl" value="${esc(it.base_url || '')}" placeholder="https://api.example.com"></label>
+          <div class="row"><label class="field" style="flex:1"><span>Auth</span><select id="fAuth" onchange="authFields()"><option value="none">None</option><option value="api_key">API key (header)</option><option value="bearer">Bearer token</option><option value="basic">Basic (user + password)</option></select></label>
+            <label class="field" style="flex:1"><span>Kind</span><input id="fKind" value="${esc(it.kind || 'rest')}"></label></div>
+          <div id="authFields"></div>
+          <label class="field"><span>Secret / token / key ${id && it.has_secret ? '(leave blank to keep ' + esc(it.secret_hint) + ')' : ''}</span><input id="fSecret" type="password" placeholder="paste token / key / app-password"></label>
+          <label class="toggle"><input type="checkbox" id="fEnabled" ${it.enabled !== false ? 'checked' : ''}> Enabled</label>
+        </div>
+        <div class="m-foot"><span class="m-status" id="fStatus"></span><button onclick="closeModal()">Cancel</button><button class="primary" onclick="saveInt(${id || 'null'})">Save</button></div>`);
+      el('fAuth').value = it.auth_type || 'none';
+      window._cfg = it.config || {};
+      authFields();
+    }
+    function applyPreset(kind) {
+      const p = presets.find(x => x.kind === kind); if (!p) return;
+      if (!el('fName').value) el('fName').value = p.label;
+      el('fUrl').value = p.base_url; el('fAuth').value = p.auth_type; el('fKind').value = p.kind;
+      window._cfg = Object.assign({}, p.config || {}); authFields();
+    }
+    function authFields() {
+      const at = el('fAuth').value, c = window._cfg || {}; let h = '';
+      if (at === 'api_key') h = `<label class="field"><span>Header name</span><input id="cHeader" value="${esc(c.header_name || 'Authorization')}"></label>`;
+      else if (at === 'basic') h = `<label class="field"><span>Username</span><input id="cUser" value="${esc(c.username || '')}"></label>`;
+      el('authFields').innerHTML = h;
+    }
+    async function saveInt(id) {
+      const at = el('fAuth').value, cfg = {};
+      if (at === 'api_key' && el('cHeader')) cfg.header_name = el('cHeader').value;
+      if (at === 'basic' && el('cUser')) cfg.username = el('cUser').value;
+      const body = { name: el('fName').value, kind: el('fKind').value, base_url: el('fUrl').value, auth_type: at, config: cfg, enabled: el('fEnabled').checked };
+      const sec = el('fSecret').value; if (sec) body.secret = sec;
+      el('fStatus').textContent = 'Saving…';
+      try { await api.send(id ? `/api/integrations/${id}` : '/api/integrations', id ? 'PUT' : 'POST', body); closeModal(); render(); }
+      catch (e) { el('fStatus').textContent = e.message; }
+    }
+
+    document.documentElement.dataset.theme = localStorage.getItem('canopy-theme') || 'light';
+    renderNav(); render();
+    window.go = go; window.openForm = openForm; window.applyPreset = applyPreset; window.authFields = authFields;
+    window.saveInt = saveInt; window.testInt = testInt; window.delInt = delInt; window.closeModal = closeModal;
+  </script>
+</body>
+</html>

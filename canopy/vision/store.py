@@ -96,6 +96,11 @@ CREATE TABLE IF NOT EXISTS measurement (
     kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
     attachment_id INTEGER, note TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS integration (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT, kind TEXT, base_url TEXT, auth_type TEXT, config TEXT, secret TEXT,
+    enabled INTEGER DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS product (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sku TEXT UNIQUE, part_number TEXT, make TEXT, model TEXT, year TEXT,
@@ -388,6 +393,66 @@ class Store:
             "SELECT * FROM attachment WHERE vehicle_id = ? ORDER BY id DESC", (vehicle_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # --- third-party integrations (Admin Console) ---
+    @staticmethod
+    def _integration_public(row: dict) -> dict:
+        d = dict(row)
+        sec = d.pop("secret", None)
+        d["has_secret"] = bool(sec)
+        d["secret_hint"] = ("••••" + sec[-4:]) if sec and len(sec) >= 4 else ("••••" if sec else "")
+        d["config"] = json.loads(d["config"]) if d.get("config") else {}
+        d["enabled"] = bool(d.get("enabled"))
+        return d
+
+    def list_integrations(self) -> list[dict]:
+        rows = self._conn.execute("SELECT * FROM integration ORDER BY id").fetchall()
+        return [self._integration_public(dict(r)) for r in rows]
+
+    def get_integration(self, integ_id: int, *, with_secret: bool = False) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM integration WHERE id = ?", (integ_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if with_secret:
+            d["config"] = json.loads(d["config"]) if d.get("config") else {}
+            return d
+        return self._integration_public(d)
+
+    def add_integration(self, **f) -> dict:
+        cur = self._conn.execute(
+            "INSERT INTO integration (name, kind, base_url, auth_type, config, secret, enabled,"
+            " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (f.get("name", ""), f.get("kind", "rest"), f.get("base_url", ""),
+             f.get("auth_type", "none"), json.dumps(f.get("config") or {}),
+             f.get("secret") or None, 1 if f.get("enabled", True) else 0, _now(), _now()))
+        self._conn.commit()
+        return self.get_integration(cur.lastrowid)
+
+    def update_integration(self, integ_id: int, **f) -> dict | None:
+        cols, vals = [], []
+        for k in ("name", "kind", "base_url", "auth_type", "enabled"):
+            if k in f and f[k] is not None:
+                cols.append(f"{k} = ?")
+                vals.append(1 if (k == "enabled" and f[k]) else (0 if k == "enabled" else f[k]))
+        if f.get("config") is not None:
+            cols.append("config = ?")
+            vals.append(json.dumps(f["config"]))
+        if f.get("secret"):  # only overwrite the secret when a new one is provided
+            cols.append("secret = ?")
+            vals.append(f["secret"])
+        if cols:
+            cols.append("updated_at = ?")
+            vals.append(_now())
+            self._conn.execute(
+                f"UPDATE integration SET {', '.join(cols)} WHERE id = ?", (*vals, integ_id))
+            self._conn.commit()
+        return self.get_integration(integ_id)
+
+    def delete_integration(self, integ_id: int) -> None:
+        self._conn.execute("DELETE FROM integration WHERE id = ?", (integ_id,))
+        self._conn.commit()
 
     def project_stats(self, vehicle_id: int) -> dict:
         """Cheap existence counts for the Cockpit readiness view."""

@@ -24,6 +24,7 @@ const ICON = {
   gauge: '<path d="M4 19a8 8 0 1116 0"/><path d="M12 19l5-5"/>', scope: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M5 13h2l2-4 2 7 2-5h4"/>', siggen: '<path d="M3 12c3-7 5-7 7 0s4 7 7 0"/>',
   catalog: '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   cockpit: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M5 5l2 2M17 17l2 2M2 12h3M19 12h3M5 19l2-2M17 7l2-2"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -362,6 +363,7 @@ const ui = {
     const kbtn = el('knowledgeBtn'); if (kbtn) kbtn.innerHTML = svg('book');
     const pbtn = el('productsBtn'); if (pbtn) pbtn.innerHTML = svg('catalog');
     const ckb = el('cockpitBtn'); if (ckb) ckb.innerHTML = svg('cockpit');
+    const adb = el('adminBtn'); if (adb) adb.innerHTML = svg('gear');
     ['dmm:gauge', 'scope:scope', 'siggen:siggen'].forEach(p => { const [id, ic] = p.split(':'); const b = el(id + 'Btn'); if (b) b.innerHTML = svg(ic); });
     api.get('/api/auth/status').then(s => { if (s.auth) el('logoutBtn').classList.remove('hidden'); }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);

@@ -202,6 +202,40 @@ class GuidedStepBody(BaseModel):
     status: str = "note"  # pass | fail | note | finding
 
 
+class IntegrationBody(BaseModel):
+    name: str = ""
+    kind: str = "rest"
+    base_url: str = ""
+    auth_type: str = "none"        # none | api_key | bearer | basic
+    config: dict | None = None     # e.g. {header_name, key_in, param_name, username}
+    secret: str | None = None      # token / key / password (write-only)
+    enabled: bool | None = True
+
+
+# Extensible connector presets — most "integrations" are just (base URL + auth) over REST.
+INTEGRATION_PRESETS = [
+    {"kind": "slack", "label": "Slack", "base_url": "https://slack.com/api",
+     "auth_type": "bearer", "hint": "Bot token (xoxb-…), or use an Incoming Webhook URL."},
+    {"kind": "gdrive", "label": "Google Drive", "base_url": "https://www.googleapis.com/drive/v3",
+     "auth_type": "bearer", "hint": "OAuth access token (or service-account bearer)."},
+    {"kind": "monday", "label": "Monday.com", "base_url": "https://api.monday.com/v2",
+     "auth_type": "api_key", "config": {"header_name": "Authorization"},
+     "hint": "API token sent in the Authorization header."},
+    {"kind": "digikey", "label": "Digi-Key", "base_url": "https://api.digikey.com",
+     "auth_type": "bearer", "hint": "OAuth2 client-credentials token (client id/secret → token)."},
+    {"kind": "mouser", "label": "Mouser", "base_url": "https://api.mouser.com/api/v1",
+     "auth_type": "api_key", "config": {"key_in": "query", "param_name": "apiKey"},
+     "hint": "API key passed as ?apiKey=…"},
+    {"kind": "wordpress", "label": "WordPress", "base_url": "https://YOURSITE/wp-json/wp/v2",
+     "auth_type": "basic", "config": {"username": ""},
+     "hint": "Username + Application Password (HTTP Basic)."},
+    {"kind": "dropbox", "label": "Dropbox", "base_url": "https://api.dropboxapi.com/2",
+     "auth_type": "bearer", "hint": "OAuth access token."},
+    {"kind": "rest", "label": "Generic REST API", "base_url": "", "auth_type": "none",
+     "hint": "Any REST API — set the base URL and pick the auth method."},
+]
+
+
 def _parse_id(v: str) -> int:
     v = v.strip()
     return int(v, 16) if v.lower().startswith("0x") else int(v, 16)
@@ -832,6 +866,63 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def pcb_component_delete(comp_id: int) -> dict:
         store.delete_pcb_component(comp_id)
         return {"ok": True}
+
+    # --- Admin Console: third-party integrations -------------------------------
+    @app.get("/admin")
+    def admin_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "admin.html")
+
+    @app.get("/api/integrations/presets")
+    def integration_presets() -> list[dict]:
+        return INTEGRATION_PRESETS
+
+    @app.get("/api/integrations")
+    def integrations_list() -> list[dict]:
+        return store.list_integrations()
+
+    @app.post("/api/integrations")
+    def integration_add(body: IntegrationBody) -> dict:
+        return store.add_integration(**body.model_dump())
+
+    @app.put("/api/integrations/{integ_id}")
+    def integration_update(integ_id: int, body: IntegrationBody) -> dict:
+        row = store.update_integration(integ_id, **body.model_dump(exclude_none=True))
+        if not row:
+            raise HTTPException(404, "no such integration")
+        return row
+
+    @app.delete("/api/integrations/{integ_id}")
+    def integration_delete(integ_id: int) -> dict:
+        store.delete_integration(integ_id)
+        return {"ok": True}
+
+    @app.post("/api/integrations/{integ_id}/test")
+    def integration_test(integ_id: int) -> dict:
+        integ = store.get_integration(integ_id, with_secret=True)
+        if not integ:
+            raise HTTPException(404, "no such integration")
+        url = (integ.get("base_url") or "").rstrip("/")
+        if not url:
+            return {"ok": False, "error": "no base URL set"}
+        headers = {}
+        at, sec = integ.get("auth_type"), integ.get("secret") or ""
+        cfg = integ.get("config") or {}
+        if at == "bearer" and sec:
+            headers["Authorization"] = f"Bearer {sec}"
+        elif at == "api_key" and sec:
+            headers[cfg.get("header_name") or "Authorization"] = sec
+        elif at == "basic" and sec:
+            headers["Authorization"] = "Basic " + base64.b64encode(
+                f"{cfg.get('username', '')}:{sec}".encode()).decode()
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=8) as r:
+                return {"ok": True, "status": r.status}
+        except Exception as e:
+            code = getattr(e, "code", None)
+            # a 401/403/404 still proves we reached the host
+            return {"ok": bool(code), "status": code, "error": str(e)[:160]}
 
     # --- NPI cockpit: every project's pipeline readiness at a glance -----------
     _COCKPIT_STAGES = ["identity", "diagram", "pinout", "pcb", "findings", "profile", "product"]

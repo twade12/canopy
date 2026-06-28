@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS measurement (
     kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
     attachment_id INTEGER, note TEXT, created_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE IF NOT EXISTS integration (
+    id SERIAL PRIMARY KEY,
+    name TEXT, kind TEXT, base_url TEXT, auth_type TEXT, config TEXT, secret TEXT,
+    enabled INTEGER DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL
+);
 CREATE TABLE IF NOT EXISTS product (
     id SERIAL PRIMARY KEY,
     sku TEXT UNIQUE, part_number TEXT, make TEXT, model TEXT, year TEXT,
@@ -328,6 +333,64 @@ class PgStore:
 
     def get_attachment(self, attachment_id: int) -> dict | None:
         return self._one("SELECT * FROM attachment WHERE id = %s", (attachment_id,))
+
+    # --- third-party integrations (Admin Console) ---
+    @staticmethod
+    def _integration_public(row: dict) -> dict:
+        d = dict(row)
+        sec = d.pop("secret", None)
+        d["has_secret"] = bool(sec)
+        d["secret_hint"] = ("••••" + sec[-4:]) if sec and len(sec) >= 4 else ("••••" if sec else "")
+        d["config"] = json.loads(d["config"]) if d.get("config") else {}
+        d["enabled"] = bool(d.get("enabled"))
+        return d
+
+    def list_integrations(self) -> list[dict]:
+        return [self._integration_public(r) for r in
+                self._all("SELECT * FROM integration ORDER BY id")]
+
+    def get_integration(self, integ_id: int, *, with_secret: bool = False) -> dict | None:
+        row = self._one("SELECT * FROM integration WHERE id = %s", (integ_id,))
+        if not row:
+            return None
+        if with_secret:
+            row = dict(row)
+            row["config"] = json.loads(row["config"]) if row.get("config") else {}
+            return row
+        return self._integration_public(row)
+
+    def add_integration(self, **f) -> dict:
+        r = self._one(
+            "INSERT INTO integration (name, kind, base_url, auth_type, config, secret, enabled,"
+            " created_at, updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            (f.get("name", ""), f.get("kind", "rest"), f.get("base_url", ""),
+             f.get("auth_type", "none"), json.dumps(f.get("config") or {}),
+             f.get("secret") or None, 1 if f.get("enabled", True) else 0, _now(), _now()))
+        return self.get_integration(r["id"])
+
+    def update_integration(self, integ_id: int, **f) -> dict | None:
+        cols, vals = [], []
+        for k in ("name", "kind", "base_url", "auth_type", "enabled"):
+            if k in f and f[k] is not None:
+                cols.append(f"{k} = %s")
+                vals.append(1 if (k == "enabled" and f[k]) else (0 if k == "enabled" else f[k]))
+        if f.get("config") is not None:
+            cols.append("config = %s")
+            vals.append(json.dumps(f["config"]))
+        if f.get("secret"):
+            cols.append("secret = %s")
+            vals.append(f["secret"])
+        if cols:
+            cols.append("updated_at = %s")
+            vals.append(_now())
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE integration SET {', '.join(cols)} WHERE id = %s", (*vals, integ_id))
+        return self.get_integration(integ_id)
+
+    def delete_integration(self, integ_id: int) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM integration WHERE id = %s", (integ_id,))
 
     def project_stats(self, vehicle_id: int) -> dict:
         def cnt(table: str) -> int:
