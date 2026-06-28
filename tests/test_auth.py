@@ -7,8 +7,8 @@ from canopy.vision import auth
 
 def test_token_roundtrip_and_tamper() -> None:
     secret = b"x" * 32
-    token = auth.make_token(secret)
-    assert auth.valid_token(secret, token)
+    token = auth.make_token(secret, 7)
+    assert auth.valid_token(secret, token) == 7             # returns the user id
     assert not auth.valid_token(b"y" * 32, token)          # wrong key
     assert not auth.valid_token(secret, token + "z")        # tampered sig
     assert not auth.valid_token(secret, None)
@@ -17,12 +17,21 @@ def test_token_roundtrip_and_tamper() -> None:
 
 def test_token_expiry() -> None:
     secret = b"k" * 32
-    assert not auth.valid_token(secret, auth.make_token(secret, ttl=-1))
+    assert not auth.valid_token(secret, auth.make_token(secret, 1, ttl=-1))
 
 
 def test_password_check() -> None:
     assert auth.check_password("hunter2", "hunter2")
     assert not auth.check_password("hunter2", "nope")
+
+
+def test_password_hashing() -> None:
+    h = auth.hash_password("s3cret!")
+    assert h != "s3cret!" and h.startswith("pbkdf2$")
+    assert auth.verify_password(h, "s3cret!")
+    assert not auth.verify_password(h, "wrong")
+    assert not auth.verify_password(None, "x")
+    assert not auth.verify_password("malformed", "x")
     assert not auth.check_password("", "")                  # empty disables (no match)
 
 

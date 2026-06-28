@@ -96,6 +96,15 @@ CREATE TABLE IF NOT EXISTS measurement (
     kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
     attachment_id INTEGER, note TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_user (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user', created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_access (
+    user_id INTEGER NOT NULL, vehicle_id INTEGER NOT NULL, level TEXT NOT NULL DEFAULT 'read',
+    PRIMARY KEY (user_id, vehicle_id)
+);
 CREATE TABLE IF NOT EXISTS integration (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT, kind TEXT, base_url TEXT, auth_type TEXT, config TEXT, secret TEXT,
@@ -393,6 +402,70 @@ class Store:
             "SELECT * FROM attachment WHERE vehicle_id = ? ORDER BY id DESC", (vehicle_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # --- users & per-project access (Admin Console) ---
+    def count_users(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM app_user").fetchone()[0]
+
+    def create_user(self, username: str, password_hash: str, role: str = "user") -> dict:
+        cur = self._conn.execute(
+            "INSERT INTO app_user (username, password_hash, role, created_at) VALUES (?,?,?,?)",
+            (username, password_hash, role, _now()))
+        self._conn.commit()
+        return self.get_user(cur.lastrowid)
+
+    def get_user(self, uid: int) -> dict | None:
+        row = self._conn.execute("SELECT * FROM app_user WHERE id = ?", (uid,)).fetchone()
+        return dict(row) if row else None
+
+    def get_user_by_username(self, username: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM app_user WHERE username = ?", (username,)).fetchone()
+        return dict(row) if row else None
+
+    def list_users(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT id, username, role, created_at FROM app_user ORDER BY id").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["projects"] = self._conn.execute(
+                "SELECT COUNT(*) FROM project_access WHERE user_id = ?", (d["id"],)).fetchone()[0]
+            out.append(d)
+        return out
+
+    def set_user_password(self, uid: int, password_hash: str) -> None:
+        self._conn.execute(
+            "UPDATE app_user SET password_hash = ? WHERE id = ?", (password_hash, uid))
+        self._conn.commit()
+
+    def delete_user(self, uid: int) -> None:
+        self._conn.execute("DELETE FROM app_user WHERE id = ?", (uid,))
+        self._conn.execute("DELETE FROM project_access WHERE user_id = ?", (uid,))
+        self._conn.commit()
+
+    def set_access(self, uid: int, vehicle_id: int, level: str | None) -> None:
+        if level in (None, "", "none"):
+            self._conn.execute(
+                "DELETE FROM project_access WHERE user_id = ? AND vehicle_id = ?",
+                (uid, vehicle_id))
+        else:
+            self._conn.execute(
+                "INSERT INTO project_access (user_id, vehicle_id, level) VALUES (?,?,?) "
+                "ON CONFLICT(user_id, vehicle_id) DO UPDATE SET level = excluded.level",
+                (uid, vehicle_id, level))
+        self._conn.commit()
+
+    def access_map(self, uid: int) -> dict[int, str]:
+        rows = self._conn.execute(
+            "SELECT vehicle_id, level FROM project_access WHERE user_id = ?", (uid,)).fetchall()
+        return {r["vehicle_id"]: r["level"] for r in rows}
+
+    def access_level(self, uid: int, vehicle_id: int) -> str | None:
+        row = self._conn.execute(
+            "SELECT level FROM project_access WHERE user_id = ? AND vehicle_id = ?",
+            (uid, vehicle_id)).fetchone()
+        return row["level"] if row else None
 
     # --- third-party integrations (Admin Console) ---
     @staticmethod

@@ -26,6 +26,10 @@ header.topbar { display: flex; align-items: center; gap: 10px; padding: 9px 14px
 .iconbtn:hover { background: var(--panel-2); color: var(--text); border-color: var(--border); }
 .iconbtn.active { color: var(--accent); }
 .status-pill { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); border: 1px solid var(--border); padding: 5px 11px; border-radius: 999px; background: var(--panel-2); }
+.user-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.user-badge .ub-name { color: var(--text); font-weight: 600; }
+.user-badge .ub-role { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; padding: 2px 7px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); }
+.user-badge .ub-role.admin { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .dot.ok { background: var(--accent); box-shadow: 0 0 7px var(--accent); } .dot.bad { background: var(--danger); }
 
@@ -538,6 +542,13 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .spinner.big { width: 34px; height: 34px; border-width: 3px; }
 .wiz-assist b { color: var(--accent); }
 
+/* Sage's animated leaf (AI activity indicator) */
+.sage-leaf { width: 17px; height: 17px; color: var(--accent); display: inline-block; vertical-align: middle;
+  transform-origin: 60% 90%; animation: sageSway 1.5s ease-in-out infinite; filter: drop-shadow(0 1px 2px rgba(15,157,107,.35)); }
+.sage-leaf.big { width: 40px; height: 40px; }
+@keyframes sageSway { 0% { transform: rotate(-11deg) scale(.94); } 50% { transform: rotate(11deg) scale(1.05); } 100% { transform: rotate(-11deg) scale(.94); } }
+@media (prefers-reduced-motion: reduce) { .sage-leaf { animation: sagePulse 1.6s ease-in-out infinite; } @keyframes sagePulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } } }
+
 /* admin console (separate /admin template) */
 .adm { flex: 1; display: flex; min-height: 0; }
 .adm-back { color: var(--muted); font-size: 12.5px; text-decoration: none; }
@@ -566,3 +577,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .adm-stub { display: flex; gap: 16px; align-items: flex-start; margin-top: 16px; }
 .adm-stub svg { width: 30px; height: 30px; color: var(--accent); flex: none; }
 .adm-stub .stub-t { font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.int-kind.role-admin { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.acc-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow: auto; }
+.acc-row { display: flex; align-items: center; gap: 10px; }
+.acc-row span { flex: 1; font-size: 13px; }
+.acc-row select { width: 150px; flex: none; }

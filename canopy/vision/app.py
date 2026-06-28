@@ -74,8 +74,20 @@ class TagBody(BaseModel):
 
 
 class LoginBody(BaseModel):
+    username: str = ""
     password: str = ""
     secure: bool = False
+
+
+class UserBody(BaseModel):
+    username: str = ""
+    password: str = ""
+    role: str = "user"  # admin | user
+
+
+class AccessBody(BaseModel):
+    vehicle_id: int
+    level: str = "read"  # read | write | none
 
 
 class AssistantBody(BaseModel):
@@ -263,21 +275,54 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     app = FastAPI(title="CANOPY Vision", docs_url="/api/docs")
     app.add_middleware(GZipMiddleware, minimum_size=600)  # compress JSON/HTML/JS
     secret = auth.load_secret(config.data_dir)
+    store = make_store(config)
+
+    # Bootstrap the admin account from CANOPY_PASSWORD on first run. With no users
+    # and no password we stay in "open mode" (local/dev, no login) for backward compat.
+    if store.count_users() == 0 and config.password:
+        store.create_user("admin", auth.hash_password(config.password), "admin")
+    open_mode = store.count_users() == 0
+    LOCAL_ADMIN = {"id": 0, "username": "local", "role": "admin"}
+    ADMIN_PATHS = ("/api/integrations", "/api/users")
+    PUBLIC_PATHS = ("/login", "/api/login", "/healthz", "/m", "/favicon.ico")
+    _VID_RE = re.compile(r"^/api/vehicles/(\d+)")
+
+    def _deny(path: str, code: int, msg: str):
+        if path.startswith("/api"):
+            return JSONResponse(status_code=code, content={"detail": msg})
+        return RedirectResponse("/login" if code == 401 else "/")
 
     @app.middleware("http")
     async def require_auth(request, call_next):
-        if not config.password:
-            return await call_next(request)
         path = request.url.path
-        # /m (mobile capture) + /api/pair/* are gated by a pairing token, not the password.
-        if (path in ("/login", "/api/login", "/healthz", "/m", "/favicon.ico")
-                or path.startswith("/static") or path.startswith("/api/pair/")):
+        if (path in PUBLIC_PATHS or path.startswith("/static")
+                or path.startswith("/api/pair/")):
             return await call_next(request)
-        if auth.valid_token(secret, request.cookies.get(auth.COOKIE)):
+        if open_mode:
+            request.state.user = LOCAL_ADMIN
             return await call_next(request)
-        if path.startswith("/api"):
-            return JSONResponse(status_code=401, content={"detail": "unauthorized"})
-        return RedirectResponse("/login")
+        uid = auth.valid_token(secret, request.cookies.get(auth.COOKIE))
+        user = store.get_user(uid) if uid else None
+        if not user:
+            return _deny(path, 401, "unauthorized")
+        request.state.user = user
+        is_admin = user["role"] == "admin"
+        # admin-only console + management APIs
+        if (path == "/admin" or path.startswith(ADMIN_PATHS)) and not is_admin:
+            return _deny(path, 403, "admin only")
+        # per-project read/write access for sub-users
+        if not is_admin:
+            m = _VID_RE.match(path)
+            if m:
+                lvl = store.access_level(user["id"], int(m.group(1)))
+                if lvl is None:
+                    return _deny(path, 403, "no access to this project")
+                if request.method in ("POST", "PUT", "PATCH", "DELETE") and lvl != "write":
+                    return _deny(path, 403, "read-only access to this project")
+        return await call_next(request)
+
+    def current_user(request: Request) -> dict:
+        return getattr(request.state, "user", None) or LOCAL_ADMIN
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -293,12 +338,16 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     @app.post("/api/login")
     def login(body: LoginBody) -> JSONResponse:
-        if not config.password or auth.check_password(config.password, body.password):
-            resp = JSONResponse({"ok": True})
-            resp.set_cookie(auth.COOKIE, auth.make_token(secret), httponly=True,
+        if open_mode:
+            return JSONResponse({"ok": True, "user": {"username": "local", "role": "admin"}})
+        user = store.get_user_by_username(body.username)
+        if user and auth.verify_password(user["password_hash"], body.password):
+            resp = JSONResponse(
+                {"ok": True, "user": {"username": user["username"], "role": user["role"]}})
+            resp.set_cookie(auth.COOKIE, auth.make_token(secret, user["id"]), httponly=True,
                             samesite="lax", max_age=auth.TTL, secure=body.secure)
             return resp
-        return JSONResponse(status_code=401, content={"detail": "wrong password"})
+        return JSONResponse(status_code=401, content={"detail": "invalid username or password"})
 
     @app.post("/api/logout")
     def logout() -> JSONResponse:
@@ -307,10 +356,50 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         return resp
 
     @app.get("/api/auth/status")
-    def auth_status() -> dict:
-        return {"auth": bool(config.password)}
+    def auth_status(request: Request) -> dict:
+        u = current_user(request)
+        return {"auth": not open_mode, "open_mode": open_mode,
+                "user": {"id": u["id"], "username": u["username"], "role": u["role"]}}
 
-    store = make_store(config)
+    # --- user management (admin-only; enforced in middleware) ---
+    def _user_public(u: dict) -> dict:
+        return {"id": u["id"], "username": u["username"], "role": u["role"],
+                "created_at": u.get("created_at", ""), "projects": u.get("projects", 0)}
+
+    @app.get("/api/users")
+    def users_list() -> list[dict]:
+        return store.list_users()
+
+    @app.post("/api/users")
+    def users_create(body: UserBody) -> dict:
+        if not body.username or not body.password:
+            raise HTTPException(400, "username and password are required")
+        if store.get_user_by_username(body.username):
+            raise HTTPException(409, "that username is taken")
+        role = "admin" if body.role == "admin" else "user"
+        u = store.create_user(body.username, auth.hash_password(body.password), role)
+        return _user_public(u)
+
+    @app.delete("/api/users/{uid}")
+    def users_delete(uid: int, request: Request) -> dict:
+        if uid == current_user(request)["id"]:
+            raise HTTPException(400, "you can't delete your own account")
+        target = store.get_user(uid)
+        if target and target["role"] == "admin":
+            admins = sum(1 for u in store.list_users() if u["role"] == "admin")
+            if admins <= 1:
+                raise HTTPException(400, "can't delete the last admin")
+        store.delete_user(uid)
+        return {"ok": True}
+
+    @app.get("/api/users/{uid}/access")
+    def users_access(uid: int) -> dict:
+        return store.access_map(uid)
+
+    @app.put("/api/users/{uid}/access")
+    def users_set_access(uid: int, body: AccessBody) -> dict:
+        store.set_access(uid, body.vehicle_id, body.level)
+        return store.access_map(uid)
     client = OllamaClient(
         config.ollama_url, config.model, timeout=config.request_timeout
     )
@@ -400,12 +489,21 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     # --- vehicles --------------------------------------------------------------
     @app.get("/api/vehicles")
-    def list_vehicles() -> list[dict]:
-        return store.list_vehicles()
+    def list_vehicles(request: Request) -> list[dict]:
+        u = current_user(request)
+        vs = store.list_vehicles()
+        if u["role"] == "admin":
+            return vs
+        acc = store.access_map(u["id"])
+        return [v for v in vs if v["id"] in acc]
 
     @app.post("/api/vehicles")
-    def create_vehicle(body: VehicleBody) -> dict:
-        return store.create_vehicle(**body.model_dump())
+    def create_vehicle(body: VehicleBody, request: Request) -> dict:
+        v = store.create_vehicle(**body.model_dump())
+        u = current_user(request)
+        if u["role"] != "admin" and u["id"]:  # creator gets write access to their project
+            store.set_access(u["id"], v["id"], "write")
+        return v
 
     @app.get("/api/vehicles/{vehicle_id}")
     def get_vehicle(vehicle_id: int) -> dict:
@@ -928,9 +1026,13 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     _COCKPIT_STAGES = ["identity", "diagram", "pinout", "pcb", "findings", "profile", "product"]
 
     @app.get("/api/cockpit")
-    def cockpit() -> list[dict]:
+    def cockpit(request: Request) -> list[dict]:
+        u = current_user(request)
+        acc = None if u["role"] == "admin" else store.access_map(u["id"])
         out = []
         for v in store.list_vehicles():
+            if acc is not None and v["id"] not in acc:
+                continue
             st = store.project_stats(v["id"])
             prod = store.match_product(make=v.get("make", ""), model=v.get("model", ""),
                                        year=v.get("year", ""))

@@ -32,18 +32,21 @@
   <div class="login-card">
     <div class="brand">CANOPY</div>
     <div class="sub">Universal CAN module test &amp; diagnostic station</div>
-    <input id="pw" type="password" placeholder="Password" autofocus
+    <input id="user" type="text" placeholder="Username" autofocus autocomplete="username"
+           onkeydown="if(event.key==='Enter')document.getElementById('pw').focus()">
+    <input id="pw" type="password" placeholder="Password" autocomplete="current-password"
            onkeydown="if(event.key==='Enter')doLogin()">
     <button class="primary" style="width:100%" onclick="doLogin()">Sign in</button>
     <div class="err" id="err"></div>
   </div>
   <script>
     async function doLogin() {
+      const username = document.getElementById('user').value;
       const pw = document.getElementById('pw').value;
       const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw, secure: location.protocol === 'https:' }) });
+        body: JSON.stringify({ username, password: pw, secure: location.protocol === 'https:' }) });
       if (r.ok) location.href = '/';
-      else document.getElementById('err').textContent = 'Incorrect password';
+      else document.getElementById('err').textContent = 'Invalid username or password';
     }
   </script>
 </body>

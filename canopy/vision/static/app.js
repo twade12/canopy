@@ -33,6 +33,8 @@ const ICON = {
   phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
 };
 const svg = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON[n] || ''}</svg>`;
+// Sage's animated leaf — shown whenever Sage (the AI) is working.
+const leaf = (cls = '') => `<svg class="sage-leaf ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20C4 11 10 4 20 4c0 10-7 16-16 16z" fill="currentColor"/><path d="M18.5 5.5C12 9 7.5 14 5 20" fill="none" stroke="#fff" stroke-width="1.3" opacity=".55" stroke-linecap="round"/></svg>`;
 const VIEWS = [
   { key: 'diagram', label: 'Diagram', icon: 'diagram' }, { key: 'pinout', label: 'Pinout', icon: 'pinout' },
   { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
@@ -287,7 +289,7 @@ function contentOf(v) { const g = groupOfView(state.dock, v); return g ? documen
 
 // ---------- AI activity toast ----------
 const aiToast = {
-  show(label, cancelable) { const t = el('aiToast'); t.innerHTML = `<div class="tt-head">${svg('assistant')} <span>${esc(label)}</span>${cancelable ? '<button class="tt-stop" onclick="ui.cancelStream()">Stop</button>' : ''}</div><div class="tt-body" id="toastBody"></div>`; t.classList.remove('hidden'); if (this._t) clearTimeout(this._t); },
+  show(label, cancelable) { const t = el('aiToast'); t.innerHTML = `<div class="tt-head">${leaf()} <span>${esc(label)}</span>${cancelable ? '<button class="tt-stop" onclick="ui.cancelStream()">Stop</button>' : ''}</div><div class="tt-body" id="toastBody"></div>`; t.classList.remove('hidden'); if (this._t) clearTimeout(this._t); },
   body(text) { const b = el('toastBody'); if (b) b.textContent = text; },
   append(text) { const b = el('toastBody'); if (b) b.textContent = (b.textContent + text).slice(-600); },
   label(text) { const h = el('aiToast').querySelector('.tt-head span'); if (h) h.textContent = text; },
@@ -365,7 +367,14 @@ const ui = {
     const ckb = el('cockpitBtn'); if (ckb) ckb.innerHTML = svg('cockpit');
     const adb = el('adminBtn'); if (adb) adb.innerHTML = svg('gear');
     ['dmm:gauge', 'scope:scope', 'siggen:siggen'].forEach(p => { const [id, ic] = p.split(':'); const b = el(id + 'Btn'); if (b) b.innerHTML = svg(ic); });
-    api.get('/api/auth/status').then(s => { if (s.auth) el('logoutBtn').classList.remove('hidden'); }).catch(() => {});
+    api.get('/api/auth/status').then(s => {
+      const u = s.user || {}; state.user = u;
+      if (s.auth) el('logoutBtn').classList.remove('hidden');
+      const b = el('userBadge');
+      if (b && s.auth) { b.classList.remove('hidden');
+        b.innerHTML = `<span class="ub-name">${esc(u.username || '')}</span><span class="ub-role ${esc(u.role)}">${u.role === 'admin' ? 'Admin' : 'Member'}</span>`; }
+      const adb = el('adminBtn'); if (adb && u.role !== 'admin') adb.classList.add('hidden');  // admin console is admin-only
+    }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.streamCtrl) this.cancelStream(); });
     state.dock = loadDock();
@@ -521,7 +530,7 @@ const ui = {
       { key: 'review', title: 'Review & open', skip: false },
     ];
     const s = STEPS[w.step]; let body = '';
-    if (w.busy) body = `<div class="wiz-busy"><span class="spinner big"></span><div>${esc(w.busy)}</div></div>`;
+    if (w.busy) body = `<div class="wiz-busy">${leaf('big')}<div>${esc(w.busy)}</div></div>`;
     else
     if (s.key === 'identify') body = `<div class="wiz-grid">
         <label class="field"><span>Label</span><input id="wizLabel" value="${esc(w.identity.label)}" placeholder="e.g. 2016 F-250 PCM"></label>

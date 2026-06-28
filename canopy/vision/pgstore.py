@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS measurement (
     kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
     attachment_id INTEGER, note TEXT, created_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_user (
+    id SERIAL PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user', created_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_access (
+    user_id INTEGER NOT NULL, vehicle_id INTEGER NOT NULL, level TEXT NOT NULL DEFAULT 'read',
+    PRIMARY KEY (user_id, vehicle_id)
+);
 CREATE TABLE IF NOT EXISTS integration (
     id SERIAL PRIMARY KEY,
     name TEXT, kind TEXT, base_url TEXT, auth_type TEXT, config TEXT, secret TEXT,
@@ -333,6 +342,61 @@ class PgStore:
 
     def get_attachment(self, attachment_id: int) -> dict | None:
         return self._one("SELECT * FROM attachment WHERE id = %s", (attachment_id,))
+
+    # --- users & per-project access (Admin Console) ---
+    def count_users(self) -> int:
+        return self._one("SELECT COUNT(*) AS n FROM app_user")["n"]
+
+    def create_user(self, username: str, password_hash: str, role: str = "user") -> dict:
+        r = self._one(
+            "INSERT INTO app_user (username, password_hash, role, created_at) "
+            "VALUES (%s,%s,%s,%s) RETURNING id", (username, password_hash, role, _now()))
+        return self.get_user(r["id"])
+
+    def get_user(self, uid: int) -> dict | None:
+        return self._one("SELECT * FROM app_user WHERE id = %s", (uid,))
+
+    def get_user_by_username(self, username: str) -> dict | None:
+        return self._one("SELECT * FROM app_user WHERE username = %s", (username,))
+
+    def list_users(self) -> list[dict]:
+        return self._all(
+            "SELECT u.id, u.username, u.role, u.created_at, "
+            "(SELECT COUNT(*) FROM project_access p WHERE p.user_id = u.id) AS projects "
+            "FROM app_user u ORDER BY u.id")
+
+    def set_user_password(self, uid: int, password_hash: str) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "UPDATE app_user SET password_hash = %s WHERE id = %s", (password_hash, uid))
+
+    def delete_user(self, uid: int) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM app_user WHERE id = %s", (uid,))
+            cur.execute("DELETE FROM project_access WHERE user_id = %s", (uid,))
+
+    def set_access(self, uid: int, vehicle_id: int, level: str | None) -> None:
+        with self._conn.cursor() as cur:
+            if level in (None, "", "none"):
+                cur.execute(
+                    "DELETE FROM project_access WHERE user_id = %s AND vehicle_id = %s",
+                    (uid, vehicle_id))
+            else:
+                cur.execute(
+                    "INSERT INTO project_access (user_id, vehicle_id, level) VALUES (%s,%s,%s) "
+                    "ON CONFLICT(user_id, vehicle_id) DO UPDATE SET level = excluded.level",
+                    (uid, vehicle_id, level))
+
+    def access_map(self, uid: int) -> dict[int, str]:
+        rows = self._all(
+            "SELECT vehicle_id, level FROM project_access WHERE user_id = %s", (uid,))
+        return {r["vehicle_id"]: r["level"] for r in rows}
+
+    def access_level(self, uid: int, vehicle_id: int) -> str | None:
+        row = self._one(
+            "SELECT level FROM project_access WHERE user_id = %s AND vehicle_id = %s",
+            (uid, vehicle_id))
+        return row["level"] if row else None
 
     # --- third-party integrations (Admin Console) ---
     @staticmethod

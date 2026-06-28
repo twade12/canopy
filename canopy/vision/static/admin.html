@@ -39,12 +39,14 @@
       { key: 'keys', label: 'API Keys', icon: 'key' },
       { key: 'settings', label: 'Settings', icon: 'gear' },
     ];
-    let cur = 'integrations', presets = [], integrations = [];
+    let cur = (location.hash || '').replace('#', '') || 'integrations';
+    if (!SECTIONS.some(s => s.key === cur)) cur = 'integrations';
+    let presets = [], integrations = [];
 
     function renderNav() {
       el('admNav').innerHTML = SECTIONS.map(s => `<a class="adm-link ${s.key === cur ? 'on' : ''}" onclick="go('${s.key}')">${svg(s.icon)} ${s.label}</a>`).join('');
     }
-    function go(k) { cur = k; renderNav(); render(); }
+    function go(k) { cur = k; location.hash = k; renderNav(); render(); }
 
     function modal(html) { el('modalRoot').innerHTML = `<div class="modal-backdrop" id="mbd" onmousedown="if(event.target===this)closeModal()"><div class="modal" style="width:min(560px,94vw)">${html}</div></div>`; }
     function closeModal() { el('modalRoot').innerHTML = ''; }
@@ -52,8 +54,8 @@
     async function render() {
       const m = el('admMain');
       if (cur === 'integrations') return renderIntegrations(m);
+      if (cur === 'team') return renderTeam(m);
       const stub = {
-        team: ['Team & assignments', 'Invite sub-users, group them into teams, and assign people to projects for triage. Roles &amp; access controls are managed here.'],
         org: ['Organization', 'Define your org units — Development, New Products, Marketing, … — and route projects and reports to the right group.'],
         keys: ['Canopy API keys', 'Generate and revoke API keys for programmatic access to this Canopy instance.'],
         settings: ['Settings', 'Instance settings — model, data location, appearance, and deploy options.'],
@@ -124,10 +126,69 @@
       catch (e) { el('fStatus').textContent = e.message; }
     }
 
+    // ---- Team & access ----
+    let users = [], projects = [];
+    async function renderTeam(m) {
+      m.innerHTML = `<div class="adm-head"><h1>Team</h1><button class="primary" onclick="openUser()">+ Add user</button></div>
+        <p class="muted" style="max-width:680px">One admin manages the team. Sub-users sign in with their own credentials and only see the projects they're assigned — each as <b>read-only</b> or <b>read/write</b>.</p>
+        <div id="userList" class="adm-grid"></div>`;
+      try { [users, projects] = await Promise.all([api.get('/api/users'), api.get('/api/vehicles')]); }
+      catch (e) { el('userList').innerHTML = `<p class="warn">${esc(e.message)}</p>`; return; }
+      el('userList').innerHTML = users.map(userCard).join('');
+    }
+    function userCard(u) {
+      const admin = u.role === 'admin';
+      return `<div class="int-card">
+        <div class="int-top"><b>${esc(u.username)}</b><span class="int-kind ${admin ? 'role-admin' : ''}">${admin ? 'Admin' : 'Member'}</span></div>
+        <div class="int-meta">${admin ? 'Full access to every project &amp; the admin console.' : `${u.projects} project(s) assigned`}</div>
+        <div class="row" style="margin-top:10px">${admin ? '' : `<button onclick="manageAccess(${u.id})">Manage access</button>`}<button class="ghost danger" onclick="delUser(${u.id},'${esc(u.username)}')">Delete</button></div></div>`;
+    }
+    function openUser() {
+      modal(`<div class="m-head">${svg('team')} Add user</div>
+        <div class="m-body">
+          <label class="field"><span>Username</span><input id="uName" autocomplete="off" placeholder="e.g. jdoe"></label>
+          <label class="field"><span>Temporary password</span><input id="uPass" type="text" autocomplete="off" placeholder="they can use this to sign in"></label>
+          <label class="field"><span>Role</span><select id="uRole"><option value="user">Member — only assigned projects</option><option value="admin">Admin — full access + console</option></select></label>
+        </div>
+        <div class="m-foot"><span class="m-status" id="uStatus"></span><button onclick="closeModal()">Cancel</button><button class="primary" onclick="saveUser()">Create user</button></div>`);
+    }
+    async function saveUser() {
+      const body = { username: el('uName').value.trim(), password: el('uPass').value, role: el('uRole').value };
+      if (!body.username || !body.password) { el('uStatus').textContent = 'Username and password required'; return; }
+      el('uStatus').textContent = 'Creating…';
+      try { await api.send('/api/users', 'POST', body); closeModal(); render(); }
+      catch (e) { el('uStatus').textContent = e.message; }
+    }
+    async function delUser(id, name) {
+      if (!confirm(`Delete user "${name}"? Their project assignments are removed too.`)) return;
+      try { await api.send(`/api/users/${id}`, 'DELETE'); render(); } catch (e) { alert(e.message); }
+    }
+    async function manageAccess(id) {
+      const u = users.find(x => x.id === id);
+      let acc = {};
+      try { acc = await api.get(`/api/users/${id}/access`); } catch {}
+      const rows = projects.length ? projects.map(p => {
+        const lvl = acc[p.id] || 'none';
+        const opt = (v, t) => `<option value="${v}" ${lvl === v ? 'selected' : ''}>${t}</option>`;
+        return `<div class="acc-row"><span>${esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || ('Project ' + p.id))}</span>
+          <select onchange="setAccess(${id}, ${p.id}, this.value)">${opt('none', 'No access')}${opt('read', 'Read-only')}${opt('write', 'Read / write')}</select></div>`;
+      }).join('') : '<p class="muted">No projects yet.</p>';
+      modal(`<div class="m-head">${svg('team')} ${esc(u.username)} · project access</div>
+        <div class="m-body"><div class="acc-list">${rows}</div></div>
+        <div class="m-foot"><span class="m-status" id="aStatus"></span><button class="primary" onclick="closeModal();render()">Done</button></div>`);
+    }
+    async function setAccess(uid, vid, level) {
+      el('aStatus').textContent = 'Saving…';
+      try { await api.send(`/api/users/${uid}/access`, 'PUT', { vehicle_id: vid, level }); el('aStatus').textContent = 'Saved'; }
+      catch (e) { el('aStatus').textContent = e.message; }
+    }
+
     document.documentElement.dataset.theme = localStorage.getItem('canopy-theme') || 'light';
     renderNav(); render();
     window.go = go; window.openForm = openForm; window.applyPreset = applyPreset; window.authFields = authFields;
     window.saveInt = saveInt; window.testInt = testInt; window.delInt = delInt; window.closeModal = closeModal;
+    window.openUser = openUser; window.saveUser = saveUser; window.delUser = delUser;
+    window.manageAccess = manageAccess; window.setAccess = setAccess; window.render = render;
   </script>
 </body>
 </html>

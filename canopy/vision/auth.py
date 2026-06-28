@@ -1,9 +1,11 @@
-"""Minimal cookie-based auth for hosting CANOPY Vision on the public web.
+"""Cookie-based auth for CANOPY Vision.
 
-A single shared password (``CANOPY_PASSWORD``) gates the app. On login we set a
-signed, expiring session cookie (HMAC over an expiry timestamp, keyed by a per-install
-secret persisted in the data dir). No external dependencies, no user database — enough to
-keep a public deployment private. Multi-user accounts come later (see docs/GAMEPLAN.md).
+Multi-user: an ``admin`` account is bootstrapped from ``CANOPY_PASSWORD`` on first run,
+and the admin creates sub-users (role ``user``) with per-project read/write access. On
+login we set a signed, expiring session cookie that carries the user id (HMAC over
+``uid.expiry``, keyed by a per-install secret in the data dir). Passwords are stored as
+salted PBKDF2-HMAC-SHA256 hashes. With no users and no password the app runs in "open
+mode" (local/dev, no login). No external dependencies.
 """
 
 from __future__ import annotations
@@ -33,25 +35,45 @@ def load_secret(data_dir: Path) -> bytes:
     return key
 
 
-def make_token(secret: bytes, *, ttl: int = TTL) -> str:
-    """Create a signed token that expires at now+ttl."""
-    expiry = str(int(time.time()) + ttl)
-    sig = hmac.new(secret, expiry.encode(), hashlib.sha256).hexdigest()
-    return f"{expiry}.{sig}"
+def make_token(secret: bytes, uid: int, *, ttl: int = TTL) -> str:
+    """Create a signed session token for user ``uid`` that expires at now+ttl."""
+    base = f"{uid}.{int(time.time()) + ttl}"
+    sig = hmac.new(secret, base.encode(), hashlib.sha256).hexdigest()
+    return f"{base}.{sig}"
 
 
-def valid_token(secret: bytes, token: str | None) -> bool:
-    """Verify a session token's signature and expiry (constant-time)."""
-    if not token or "." not in token:
-        return False
-    expiry, sig = token.rsplit(".", 1)
-    expected = hmac.new(secret, expiry.encode(), hashlib.sha256).hexdigest()
+def valid_token(secret: bytes, token: str | None) -> int | None:
+    """Return the user id if the session token is valid and unexpired, else None."""
+    parts = (token or "").split(".")
+    if len(parts) != 3:
+        return None
+    uid, expiry, sig = parts
+    expected = hmac.new(secret, f"{uid}.{expiry}".encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected):
-        return False
+        return None
     try:
-        return int(expiry) > time.time()
+        return int(uid) if int(expiry) > time.time() else None
+    except ValueError:
+        return None
+
+
+# --- per-user password hashing (PBKDF2-HMAC-SHA256, salted) ---
+def hash_password(password: str, *, rounds: int = 120_000) -> str:
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), rounds).hex()
+    return f"pbkdf2${rounds}${salt}${dk}"
+
+
+def verify_password(stored: str | None, attempt: str) -> bool:
+    if not stored or stored.count("$") != 3:
+        return False
+    _, rounds, salt, dk = stored.split("$")
+    try:
+        test = hashlib.pbkdf2_hmac(
+            "sha256", (attempt or "").encode(), salt.encode(), int(rounds)).hex()
     except ValueError:
         return False
+    return hmac.compare_digest(dk, test)
 
 
 def check_password(secret_password: str, attempt: str) -> bool:
