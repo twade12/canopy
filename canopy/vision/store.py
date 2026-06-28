@@ -90,6 +90,12 @@ CREATE TABLE IF NOT EXISTS profile (
     vehicle_id INTEGER PRIMARY KEY REFERENCES vehicle(id) ON DELETE CASCADE,
     yaml TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS measurement (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
+    kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
+    attachment_id INTEGER, note TEXT, created_at TEXT NOT NULL
+);
 """
 
 
@@ -366,6 +372,29 @@ class Store:
             "SELECT * FROM attachment WHERE vehicle_id = ? ORDER BY id DESC", (vehicle_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # --- recorded measurements (DMM readings / scope captures for the wiki) ---
+    def add_measurement(self, vehicle_id: int, **f) -> dict:
+        cur = self._conn.execute(
+            "INSERT INTO measurement (vehicle_id, kind, label, mode, value, unit, data,"
+            " attachment_id, note, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (vehicle_id, f.get("kind", ""), f.get("label", ""), f.get("mode", ""),
+             f.get("value"), f.get("unit", ""), f.get("data"), f.get("attachment_id"),
+             f.get("note", ""), _now()))
+        self._conn.commit()
+        row = self._conn.execute(
+            "SELECT * FROM measurement WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return dict(row)
+
+    def list_measurements(self, vehicle_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM measurement WHERE vehicle_id = ? ORDER BY id DESC", (vehicle_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_measurement(self, measurement_id: int) -> None:
+        self._conn.execute("DELETE FROM measurement WHERE id = ?", (measurement_id,))
+        self._conn.commit()
 
     # --- module profile (the CAB contract) ---
     def get_profile(self, vehicle_id: int) -> str | None:

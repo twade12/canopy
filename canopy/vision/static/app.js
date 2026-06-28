@@ -387,7 +387,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = ''; state.guidedThinking = null; state.profileYaml = null; state.profileObj = null; state.profileSaved = false;
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = ''; state.guidedThinking = null; state.profileYaml = null; state.profileObj = null; state.profileSaved = false; state.measurements = null;
     try { sessionStorage.setItem('canopy-project', id); } catch {} setTitle(); this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
@@ -630,15 +630,16 @@ const ui = {
       <div class="instr-head">${svg('gauge')} Digital Multimeter ${this.instrSourceBar()}</div>
       <div class="dmm-modes">${modes.map(([k, sym, lbl]) => `<button class="${k === m ? 'primary' : ''}" title="${lbl}" onclick="ui.dmmMode('${k}')">${sym}</button>`).join('')}</div>
       <div class="dmm-screen"><div class="dmm-val" id="dmmVal">--</div><div class="dmm-unit" id="dmmUnit"></div><div class="dmm-extra" id="dmmExtra"></div></div>
-      <div class="muted" style="font-size:11px;margin-top:10px">Simulated bench by default — the <b>Signal Generator</b> drives these readings. Plug in a USB DMM and use Connect for live hardware.</div></div>`;
-    this.dmmStart();
+      ${this.measPanel('dmm')}
+      <div class="muted" style="font-size:11px;margin-top:10px">Simulated by default — the <b>Signal Generator</b> drives these readings. Connect a USB DMM (Source) for live hardware.</div></div>`;
+    this.dmmStart(); this.loadMeasurements();
   },
   dmmMode(k) { state.dmmMode = k; rerenderView('dmm'); },
   dmmStart() {
     if (state.dmmTimer) clearInterval(state.dmmTimer);
     const tick = async () => {
       const v = el('dmmVal'); if (!v) { clearInterval(state.dmmTimer); state.dmmTimer = null; return; }
-      try { const r = await api.get('/api/instr/dmm?mode=' + (state.dmmMode || 'vdc'));
+      try { const r = await api.get('/api/instr/dmm?mode=' + (state.dmmMode || 'vdc')); state.dmmLast = r;
         if (r.mode === 'continuity') { v.textContent = r.continuity ? 'CONT' : 'OPEN'; v.className = 'dmm-val' + (r.continuity ? ' beep' : ''); el('dmmUnit').textContent = ''; el('dmmExtra').textContent = r.value + ' Ω'; }
         else { const [val, unit] = fmtMeas(r.value, r.unit); v.textContent = val; v.className = 'dmm-val'; el('dmmUnit').textContent = unit; el('dmmExtra').textContent = r.overload ? 'OL' : ''; }
       } catch {}
@@ -658,14 +659,16 @@ const ui = {
         <label>Time/div <select onchange="ui.scopeSet('tb',this.value)">${tbs.map(([l, val]) => `<option value="${val}" ${val === tb ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>V/div <select onchange="ui.scopeSet('vdiv',this.value)">${vds.map(val => `<option value="${val}" ${val === vdiv ? 'selected' : ''}>${val} V</option>`).join('')}</select></label>
         <label>Coupling <select onchange="ui.scopeSet('coupling',this.value)">${['dc', 'ac'].map(x => `<option value="${x}" ${tg.coupling === x ? 'selected' : ''}>${x.toUpperCase()}</option>`).join('')}</select></label>
-        <button class="${run ? 'danger' : 'primary'}" onclick="ui.scopeSet('run',${run ? 0 : 1})">${run ? 'Stop' : 'Run'}</button></div>
+        <button class="${run ? 'danger' : 'primary'}" onclick="ui.scopeSet('run',${run ? 0 : 1})">${run ? 'Stop' : 'Run'}</button>
+        <button onclick="ui.captureScope()" style="margin-left:auto">${svg('record')} Capture</button></div>
+      ${this.measPanel('scope')}
       <div class="scope-ctl trig">
         <span class="trig-lbl">Trigger</span>
         <label>Level <div class="sg-in" style="width:120px"><input type="number" step="0.1" value="${tg.level}" onchange="ui.scopeSet('trigLevel',this.value)"><span>V</span></div></label>
         <div class="seg">${['rising', 'falling'].map(x => `<button class="${tg.edge === x ? 'primary' : ''}" onclick="ui.scopeSet('trigEdge','${x}')">${x === 'rising' ? '↑' : '↓'}</button>`).join('')}</div>
         <div class="seg">${['auto', 'normal', 'single'].map(x => `<button class="${tg.mode === x ? 'primary' : ''}" onclick="ui.scopeSet('trigMode','${x}')">${x}</button>`).join('')}</div>
       </div></div>`;
-    this.scopeConnect();
+    this.scopeConnect(); this.loadMeasurements();
   },
   scopeSet(k, v) {
     const tg = state.scopeTrig;
@@ -696,6 +699,7 @@ const ui = {
     const cv = el('scopeCanvas'); if (!cv) return; const wrap = cv.parentElement; const dpr = devicePixelRatio || 1;
     const W = wrap.clientWidth, H = wrap.clientHeight; if (!W || !H) return;
     cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    if (frame) state.scopeLastFrame = frame;
     const x = cv.getContext('2d'); x.scale(dpr, dpr); x.clearRect(0, 0, W, H);
     const cols = 10, rows = 8;
     x.strokeStyle = 'rgba(110,230,170,.13)'; x.lineWidth = 1;
@@ -770,6 +774,43 @@ const ui = {
     } catch (e) { alert(e.message); }
   },
   async instrPorts() { state.instrPorts = undefined; await this.instrEnsure('scope'); ['dmm', 'siggen'].forEach(v => rerenderView(v)); },
+  // record DMM readings / scope captures into the selected project (for audit + wiki)
+  measPanel(kind) {
+    if (!state.current) return `<div class="muted" style="font-size:11px;margin-top:10px">Select a project on the left to record ${kind === 'dmm' ? 'readings' : 'captures'} into its wiki.</div>`;
+    const rows = (state.measurements || []).filter(m => m.kind === kind).slice(0, 6);
+    const recBtn = kind === 'dmm'
+      ? `<button class="primary" onclick="ui.recordDmm()">${svg('record')} Record reading → ${esc(state.current.label || 'project')}</button>` : '';
+    return `<div class="instr-rec">${recBtn}<span class="muted" style="font-size:11px">Saved to <b>${esc(state.current.label || 'project')}</b></span></div>
+      <div class="meas-list">${rows.map(m => `<div class="meas-row">${kind === 'scope' ? svg('scope') : ''}<b>${esc(m.label || m.mode)}</b>${m.value != null ? ` <span class="meas-v">${esc(String(m.value))} ${esc(m.unit || '')}</span>` : ''}<span class="muted" style="font-size:10.5px">${esc((m.created_at || '').slice(11, 19))}</span><button class="iconbtn" title="Delete" onclick="ui.deleteMeas(${m.id})">${svg('trash')}</button></div>`).join('') || '<span class="muted" style="font-size:11px">No recordings yet.</span>'}</div>`;
+  },
+  async loadMeasurements() {
+    if (!state.current || state.measurements !== null) return;
+    state.measurements = [];
+    try { state.measurements = await api.get(`/api/vehicles/${state.current.id}/measurements`); } catch {}
+    ['dmm', 'scope'].forEach(v => rerenderView(v));
+  },
+  async recordDmm() {
+    if (!state.current) { alert('Select a project first.'); return; }
+    const r = state.dmmLast; if (!r) { alert('No reading yet.'); return; }
+    const label = prompt('Label this reading (e.g. "battery rest voltage", "R12 across pins"):', r.mode);
+    if (label == null) return;
+    try { const m = await api.send(`/api/vehicles/${state.current.id}/measurement`, 'POST', { kind: 'dmm', label, mode: r.mode, value: r.value, unit: r.unit });
+      state.measurements = [m, ...(state.measurements || [])]; rerenderView('dmm'); aiToast.done('Reading recorded'); }
+    catch (e) { alert(e.message); }
+  },
+  async captureScope() {
+    if (!state.current) { alert('Select a project first.'); return; }
+    const cv = el('scopeCanvas'); if (!cv) return;
+    const label = prompt('Label this capture (e.g. "injector 1 drive", "5V ref ripple"):', 'scope capture');
+    if (label == null) return;
+    const fr = state.scopeLastFrame;
+    try { const m = await api.send(`/api/vehicles/${state.current.id}/measurement`, 'POST', { kind: 'scope', label, mode: 'CH1', data: fr ? { dt: fr.dt, span: fr.span, ch1: fr.ch1 } : null, image: cv.toDataURL('image/png') });
+      state.measurements = [m, ...(state.measurements || [])]; rerenderView('scope'); aiToast.done('Capture saved to project'); }
+    catch (e) { alert(e.message); }
+  },
+  async deleteMeas(id) {
+    try { await api.send('/api/measurement/' + id, 'DELETE'); state.measurements = (state.measurements || []).filter(m => m.id !== id); ['dmm', 'scope'].forEach(v => rerenderView(v)); } catch (e) { alert(e.message); }
+  },
 
   // ---------- guided repair triage ----------
   viewTriage(c) {

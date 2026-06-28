@@ -62,6 +62,23 @@ def build(store, vehicle_id: int) -> str:
                 out.append(f"*{a['note']}*")
             out += [f"![annotation](/api/attachment/{a['id']}/image)", ""]
 
+    meas = store.list_measurements(vehicle_id)
+    if meas:
+        out += ["## Recorded measurements", ""]
+        dmm = [m for m in meas if m.get("kind") == "dmm"]
+        if dmm:
+            out += ["| When | Measurement | Reading |", "|---|---|---|"]
+            for m in dmm:
+                when = str(m.get("created_at", ""))[:16]
+                val = f"{m.get('value')} {m.get('unit', '')}".strip()
+                out.append(f"| {when} | {_esc(m.get('label') or m.get('mode'))} | {val} |")
+            out.append("")
+        for m in meas:
+            if m.get("kind") == "scope" and m.get("attachment_id"):
+                if m.get("label"):
+                    out.append(f"*{m['label']}*")
+                out += [f"![scope capture](/api/attachment/{m['attachment_id']}/image)", ""]
+
     mems = store.list_memories(vehicle_id)
     if mems:
         out += ["## Known failure modes & accumulated notes", ""]

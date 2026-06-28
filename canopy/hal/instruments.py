@@ -202,16 +202,34 @@ class InstrumentHub:
         s["mock"] = isinstance(self.instr, MockInstrument)
         return s
 
-    def connect(self, port: str | None = None) -> dict:
-        if port:
-            try:
-                self.instr.close()
-                self.instr = SerialInstrument(port)
-            except Exception:
-                self.instr = MockInstrument()
-        else:
+    def connect(self, source: str | None = None) -> dict:
+        """source: '' -> simulated; a VISA resource (contains '::' or USB/TCPIP/GPIB/ASRL) ->
+        real DMM/scope via pyvisa; otherwise a serial port -> SerialInstrument."""
+        try:
+            self.instr.close()
+        except Exception:
+            pass
+        src = (source or "").strip()
+        self.last_error = ""
+        if not src:
             self.instr = MockInstrument()
-        return self.status()
+        elif "::" in src or src.upper().startswith(("USB", "TCPIP", "GPIB", "ASRL")):
+            try:
+                from canopy.hal.visa import VisaInstrument
+                self.instr = VisaInstrument(src)
+            except Exception as e:
+                self.instr = MockInstrument()
+                self.last_error = f"VISA connect failed: {e}"
+        else:
+            try:
+                self.instr = SerialInstrument(src)
+            except Exception as e:
+                self.instr = MockInstrument()
+                self.last_error = f"serial connect failed: {e}"
+        s = self.status()
+        if self.last_error:
+            s["error"] = self.last_error
+        return s
 
     def __getattr__(self, item):
         # delegate dmm/scope_frame/set_siggen/get_siggen to the active instrument

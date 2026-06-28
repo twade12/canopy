@@ -109,7 +109,19 @@ class RestbusBody(BaseModel):
 
 
 class InstrConnectBody(BaseModel):
-    port: str = ""  # serial port; empty = use the simulated mock bench
+    source: str = ""  # '' = simulated; serial port; or a VISA resource (USB::...::INSTR)
+    port: str = ""    # legacy alias
+
+
+class MeasurementBody(BaseModel):
+    kind: str = "dmm"            # dmm | scope
+    label: str = ""
+    mode: str = ""               # vdc / scope channel / ...
+    value: float | None = None   # the numeric reading (DMM)
+    unit: str = ""
+    data: object | None = None   # e.g. scope samples (stored as JSON)
+    note: str = ""
+    image: str = ""              # base64 PNG (scope capture) -> saved as an attachment
 
 
 class SigGenBody(BaseModel):
@@ -835,6 +847,34 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         store.save_profile(vehicle_id, body.yaml)
         return {"ok": True, "saved": True}
 
+    # --- recorded measurements (DMM/scope -> project, for audit + wiki) --------
+    @app.get("/api/vehicles/{vehicle_id}/measurements")
+    def list_measurements(vehicle_id: int) -> list[dict]:
+        return store.list_measurements(vehicle_id)
+
+    @app.post("/api/vehicles/{vehicle_id}/measurement")
+    def add_measurement(vehicle_id: int, body: MeasurementBody) -> dict:
+        attachment_id = None
+        if body.image:  # a scope capture PNG -> save as an attachment so the wiki can embed it
+            try:
+                raw = base64.b64decode(_decode_b64_image(body.image))
+                path = config.uploads_dir / f"v{vehicle_id}_meas_{int(time.time() * 1000)}.png"
+                path.write_bytes(raw)
+                att = store.add_attachment(
+                    vehicle_id, str(path), kind="measurement", note=body.label[:200])
+                attachment_id = att["id"]
+            except (ValueError, OSError):
+                pass
+        data = json.dumps(body.data) if body.data is not None else None
+        return store.add_measurement(
+            vehicle_id, kind=body.kind, label=body.label, mode=body.mode, value=body.value,
+            unit=body.unit, data=data, attachment_id=attachment_id, note=body.note)
+
+    @app.delete("/api/measurement/{measurement_id}")
+    def delete_measurement(measurement_id: int) -> dict:
+        store.delete_measurement(measurement_id)
+        return {"ok": True}
+
     # --- guided walkthrough (physics-first, step-by-step) ----------------------
     @app.get("/api/vehicles/{vehicle_id}/guided/log")
     def guided_log(vehicle_id: int) -> list[dict]:
@@ -1035,7 +1075,7 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     @app.post("/api/instr/connect")
     def instr_connect(body: InstrConnectBody) -> dict:
-        return instruments.connect(body.port or None)
+        return instruments.connect(body.source or body.port or None)
 
     @app.get("/api/instr/ports")
     def instr_ports() -> dict:
@@ -1047,6 +1087,11 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         except Exception:
             pass
         return {"ports": ports}
+
+    @app.get("/api/instr/visa")
+    def instr_visa() -> dict:
+        from canopy.hal.visa import list_resources
+        return list_resources()
 
     @app.get("/api/instr/dmm")
     def instr_dmm(mode: str = "vdc") -> dict:

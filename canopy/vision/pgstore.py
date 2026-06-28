@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS profile (
     vehicle_id INTEGER PRIMARY KEY REFERENCES vehicle(id) ON DELETE CASCADE,
     yaml TEXT NOT NULL, updated_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE IF NOT EXISTS measurement (
+    id SERIAL PRIMARY KEY,
+    vehicle_id INTEGER NOT NULL REFERENCES vehicle(id) ON DELETE CASCADE,
+    kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
+    attachment_id INTEGER, note TEXT, created_at TIMESTAMPTZ NOT NULL
+);
 """
 
 
@@ -306,6 +312,23 @@ class PgStore:
 
     def get_attachment(self, attachment_id: int) -> dict | None:
         return self._one("SELECT * FROM attachment WHERE id = %s", (attachment_id,))
+
+    # --- recorded measurements ---
+    def add_measurement(self, vehicle_id: int, **f) -> dict:
+        return self._one(
+            "INSERT INTO measurement (vehicle_id, kind, label, mode, value, unit, data,"
+            " attachment_id, note, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+            (vehicle_id, f.get("kind", ""), f.get("label", ""), f.get("mode", ""),
+             f.get("value"), f.get("unit", ""), f.get("data"), f.get("attachment_id"),
+             f.get("note", ""), _now()))
+
+    def list_measurements(self, vehicle_id: int) -> list[dict]:
+        return self._all(
+            "SELECT * FROM measurement WHERE vehicle_id = %s ORDER BY id DESC", (vehicle_id,))
+
+    def delete_measurement(self, measurement_id: int) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM measurement WHERE id = %s", (measurement_id,))
 
     # --- module profile (the CAB contract) ---
     def get_profile(self, vehicle_id: int) -> str | None:
