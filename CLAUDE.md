@@ -12,6 +12,25 @@ internal repair wiki.
 
 ---
 
+## 0. Companion docs & current status (read these too)
+
+The vision/triage app is live and substantial (`canopy/vision/`): wiring-diagram→pinout,
+board-photo→components (editable boxes, corrections, multi-photo), grounded Triage, a physics-first
+**Guided** walkthrough (streams its reasoning), a 33-article house **Knowledge** base, Memories,
+**Wiki** export, phone capture, a **Bench** CAN tab, and a **Profile** tab. Postgres/pgvector
+optional; systemd + nginx deploy.
+
+**CAB (Car-in-a-Box)** is the physical 10-slot HIL bench this software drives. Canopy is the brain,
+CAB is the body, and the **Module Profile** (`canopy/profiles/`) is the seam: diagram/PCB →
+auto-drafted profile → confirm → CAB executes. Durable plans:
+- [`docs/CAB-INTEGRATION.md`](docs/CAB-INTEGRATION.md) — the CAB↔Canopy north star + roadmap (tiers).
+- [`docs/CAB-PROTOCOL.md`](docs/CAB-PROTOCOL.md) — the host↔CAB serial command protocol (v1).
+- [`docs/GUIDED-TRIAGE.md`](docs/GUIDED-TRIAGE.md) — the guided-walkthrough design.
+- [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — new-user tour of the tabs.
+- `canopy/profiles/` (schema + auto-draft), `canopy/hal/cab.py` (CAB client + mock bench).
+
+---
+
 ## 1. North-Star Goals
 
 1. **Plug a module onto the bench, pick its profile, hit run** → the station powers
