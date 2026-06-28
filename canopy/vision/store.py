@@ -389,6 +389,17 @@ class Store:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def project_stats(self, vehicle_id: int) -> dict:
+        """Cheap existence counts for the Cockpit readiness view."""
+        def cnt(table: str) -> int:
+            return self._conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE vehicle_id = ?", (vehicle_id,)).fetchone()[0]
+        return {
+            "diagrams": cnt("diagram"), "pinouts": cnt("pinout"),
+            "components": cnt("pcb_component"), "memories": cnt("memory"),
+            "measurements": cnt("measurement"), "has_profile": cnt("profile") > 0,
+        }
+
     # --- product library (reusable SKU: profile + wiki + BOM + cases) ---
     _PRODUCT_COLS = ("sku", "part_number", "make", "model", "year", "module_class", "label",
                      "profile_yaml", "wiki", "bom", "symptoms", "source_vehicle_id")

@@ -833,6 +833,36 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         store.delete_pcb_component(comp_id)
         return {"ok": True}
 
+    # --- NPI cockpit: every project's pipeline readiness at a glance -----------
+    _COCKPIT_STAGES = ["identity", "diagram", "pinout", "pcb", "findings", "profile", "product"]
+
+    @app.get("/api/cockpit")
+    def cockpit() -> list[dict]:
+        out = []
+        for v in store.list_vehicles():
+            st = store.project_stats(v["id"])
+            prod = store.match_product(make=v.get("make", ""), model=v.get("model", ""),
+                                       year=v.get("year", ""))
+            stages = {
+                "identity": bool(v.get("make") or v.get("model") or v.get("tags")),
+                "diagram": st["diagrams"] > 0,
+                "pinout": st["pinouts"] > 0,
+                "pcb": st["components"] > 0,
+                "findings": st["memories"] > 0 or st["measurements"] > 0,
+                "profile": st["has_profile"],
+                "product": prod is not None,
+            }
+            done = sum(1 for k in _COCKPIT_STAGES if stages[k])
+            nxt = next((k for k in _COCKPIT_STAGES if not stages[k]), None)
+            out.append({
+                "id": v["id"], "label": v.get("label", ""), "make": v.get("make", ""),
+                "model": v.get("model", ""), "year": v.get("year", ""), "tags": v.get("tags", []),
+                "stages": stages, "progress": round(done / len(_COCKPIT_STAGES) * 100),
+                "next": nxt, "units": prod["units"] if prod else None,
+                "updated_at": v.get("created_at", ""),
+            })
+        return out
+
     # --- product library (turn a project into a reusable, listable SKU) --------
     @app.get("/api/products")
     def products_list() -> list[dict]:

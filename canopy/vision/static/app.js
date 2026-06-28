@@ -23,6 +23,7 @@ const ICON = {
   cab: '<path d="M3 4h18v16H3z"/><path d="M7 4v16M11 4v16M15 4v16M19 4v16"/>',
   gauge: '<path d="M4 19a8 8 0 1116 0"/><path d="M12 19l5-5"/>', scope: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M5 13h2l2-4 2 7 2-5h4"/>', siggen: '<path d="M3 12c3-7 5-7 7 0s4 7 7 0"/>',
   catalog: '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  cockpit: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -40,11 +41,12 @@ const VIEWS = [
   { key: 'profile', label: 'Profile', icon: 'cab' }, { key: 'wiki', label: 'Wiki', icon: 'record' },
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
+  { key: 'cockpit', label: 'Cockpit', icon: 'cockpit' },
   { key: 'knowledge', label: 'Knowledge', icon: 'book' }, { key: 'products', label: 'Products', icon: 'catalog' },
   { key: 'dmm', label: 'DMM', icon: 'gauge' }, { key: 'scope', label: 'Scope', icon: 'scope' },
   { key: 'siggen', label: 'Signal Gen', icon: 'siggen' },
 ];
-const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research', 'knowledge', 'products', 'dmm', 'scope', 'siggen']);  // usable without a project
+const GLOBAL_VIEWS = new Set(['cockpit', 'api', 'assistant', 'bench', 'research', 'knowledge', 'products', 'dmm', 'scope', 'siggen']);  // usable without a project
 const GUIDED_PHASES = [
   { key: 'intake', label: 'Intake' }, { key: 'sealed', label: 'Sealed checks' },
   { key: 'powerup', label: 'Power-up' }, { key: 'inspect', label: 'Open & inspect' },
@@ -344,7 +346,7 @@ const anno = {
 function viewIn(c) { c.classList.remove('view-in'); void c.offsetWidth; c.classList.add('view-in'); }
 function renderViewInto(view, c) {
   if (!c) return;
-  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge, products: ui.viewProducts, dmm: ui.viewDmm, scope: ui.viewScope, siggen: ui.viewSiggen };
+  const globals = { cockpit: ui.viewCockpit, api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge, products: ui.viewProducts, dmm: ui.viewDmm, scope: ui.viewScope, siggen: ui.viewSiggen };
   if (globals[view]) { globals[view].call(ui, c); viewIn(c); return; }
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; viewIn(c); return; }
   ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki, guided: ui.viewGuided, profile: ui.viewProfile })[view].call(ui, c);
@@ -360,6 +362,7 @@ const ui = {
     el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search'); el('logoutBtn').innerHTML = svg('logout');
     const kbtn = el('knowledgeBtn'); if (kbtn) kbtn.innerHTML = svg('book');
     const pbtn = el('productsBtn'); if (pbtn) pbtn.innerHTML = svg('catalog');
+    const ckb = el('cockpitBtn'); if (ckb) ckb.innerHTML = svg('cockpit');
     ['dmm:gauge', 'scope:scope', 'siggen:siggen'].forEach(p => { const [id, ic] = p.split(':'); const b = el(id + 'Btn'); if (b) b.innerHTML = svg(ic); });
     api.get('/api/auth/status').then(s => { if (s.auth) el('logoutBtn').classList.remove('hidden'); }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
@@ -398,7 +401,7 @@ const ui = {
       html = Object.keys(groups).sort().map(k => `<div class="group-label">${esc(k)}</div>` + groups[k].map(card).join('')).join(''); }
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
-  async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
+  newRecord() { this.startWizard(); },  // guided onboarding instead of a blank project
   async select(id) { state.current = await api.cget('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = ''; state.guidedThinking = null; state.profileYaml = null; state.profileObj = null; state.profileSaved = false; state.measurements = null;
     try { sessionStorage.setItem('canopy-project', id); } catch {} setTitle(); this.renderRecords(); renderDock(); },
 
@@ -469,6 +472,114 @@ const ui = {
     c.innerHTML += `
       <h3 class="sec">Tags</h3><div class="tags" style="margin-bottom:10px">${(v.tags || []).map(t => `<span class="tagchip rm" onclick="ui.removeTag('${esc(t).replace(/'/g, "")}')">${esc(t)} ✕</span>`).join('') || '<span class="muted">No tags.</span>'}</div>
       <div class="chat-input"><input id="tagIn" placeholder="Add a tag (e.g. Duramax)" onkeydown="if(event.key==='Enter')ui.addTag()"><button onclick="ui.addTag()">${svg('tag')} Add</button><button onclick="ui.extractTags()" id="tagAiBtn">${svg('bolt')} AI tags</button></div>`; },
+
+  // ---------- NPI cockpit (every project's pipeline readiness) ----------
+  viewCockpit(c) {
+    if (state.cockpit == null) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.loadCockpit(); return; }
+    const STAGES = [['identity', 'ID'], ['diagram', 'Diagram'], ['pinout', 'Pinout'], ['pcb', 'PCB'], ['findings', 'Findings'], ['profile', 'Profile'], ['product', 'Product']];
+    const q = (state.cockpitQ || '').toLowerCase();
+    let rows = state.cockpit.filter(p => !q || [p.label, p.make, p.model, p.year, ...(p.tags || [])].join(' ').toLowerCase().includes(q));
+    rows = rows.slice().sort((a, b) => b.progress - a.progress);
+    const card = p => `<div class="ck-card" onclick="ui.cockpitOpen(${p.id})">
+      <div class="ck-top"><div class="ck-title">${esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || 'Untitled')}</div>${p.units ? `<span class="units-badge" title="units serviced">${p.units}</span>` : ''}</div>
+      <div class="ck-bar"><span style="width:${p.progress}%"></span></div>
+      <div class="ck-stages">${STAGES.map(([k, lbl]) => `<span class="ck-st ${p.stages[k] ? 'on' : ''}" title="${lbl}">${p.stages[k] ? svg('check') : ''}<i>${lbl}</i></span>`).join('')}</div>
+      <div class="ck-next">${p.next ? `Next: <b>${esc(p.next)}</b>` : '<span class="ck-ready">' + svg('check') + ' ready to list</span>'}</div></div>`;
+    c.innerHTML = `<div class="ck-col">
+      <div class="ck-head"><h3 class="sec" style="margin:0">NPI Cockpit</h3>
+        <input id="ckQ" placeholder="Search modules…" value="${esc(state.cockpitQ || '')}" oninput="ui.cockpitSearch(this.value)" style="max-width:240px">
+        <button class="primary" onclick="ui.startWizard()">${svg('plus')} New module (guided)</button>
+        <button class="iconbtn" title="Refresh" onclick="ui.loadCockpit(true)">${svg('reset')}</button>
+        <span class="muted" style="font-size:11px">${rows.length} module(s)</span></div>
+      ${rows.length ? `<div class="ck-grid">${rows.map(card).join('')}</div>` : '<div class="empty">No modules yet. Click <b>New module (guided)</b> to onboard one.</div>'}</div>`;
+  },
+  async loadCockpit(force) { if (force) state.cockpit = null; try { state.cockpit = await api.get('/api/cockpit'); } catch { state.cockpit = []; } rerenderView('cockpit'); },
+  cockpitSearch(v) { state.cockpitQ = v; const g = document.querySelector('.ck-grid'); if (!g) { rerenderView('cockpit'); return; }
+    const STAGES = [['identity', 'ID'], ['diagram', 'Diagram'], ['pinout', 'Pinout'], ['pcb', 'PCB'], ['findings', 'Findings'], ['profile', 'Profile'], ['product', 'Product']];
+    const q = v.toLowerCase(); const rows = state.cockpit.filter(p => !q || [p.label, p.make, p.model, p.year, ...(p.tags || [])].join(' ').toLowerCase().includes(q)).sort((a, b) => b.progress - a.progress);
+    g.innerHTML = rows.map(p => `<div class="ck-card" onclick="ui.cockpitOpen(${p.id})"><div class="ck-top"><div class="ck-title">${esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || 'Untitled')}</div>${p.units ? `<span class="units-badge">${p.units}</span>` : ''}</div><div class="ck-bar"><span style="width:${p.progress}%"></span></div><div class="ck-stages">${STAGES.map(([k, lbl]) => `<span class="ck-st ${p.stages[k] ? 'on' : ''}" title="${lbl}">${p.stages[k] ? svg('check') : ''}<i>${lbl}</i></span>`).join('')}</div><div class="ck-next">${p.next ? `Next: <b>${esc(p.next)}</b>` : '<span class="ck-ready">ready</span>'}</div></div>`).join('') || '<div class="empty">No matches.</div>';
+  },
+  async cockpitOpen(id) { await this.select(id); ensureView('record'); },
+
+  // ---------- guided onboarding wizard (TurboTax-style new-module flow) ----------
+  startWizard() {
+    state.wizard = { step: 0, vid: null, identity: { label: '', make: '', model: '', year: '' },
+      diagram: false, pinouts: 0, components: 0, pcbImage: null, symptom: '', match: null };
+    let ov = el('wizard');
+    if (!ov) { ov = document.createElement('div'); ov.id = 'wizard'; document.body.appendChild(ov); }
+    this.renderWizard();
+  },
+  wizardClose() { const ov = el('wizard'); if (ov) ov.remove(); this.loadRecords(); state.cockpit = null; },
+  renderWizard() {
+    const ov = el('wizard'); if (!ov) return; const w = state.wizard;
+    const STEPS = [
+      { key: 'identify', title: 'Identify the module', skip: false, assist: "Snap the label or type the make / model / year — I'll check whether we've serviced this module before." },
+      { key: 'diagram', title: 'Wiring diagram', skip: true, assist: "Drop the wiring diagram (image or PDF) and I'll read the connector pinout automatically. No diagram yet? Skip it." },
+      { key: 'pcb', title: 'Board photo', skip: true, assist: 'Photograph the top of the board — I box and identify the components and flag the usual failure points.' },
+      { key: 'symptom', title: 'Customer symptom', skip: true, assist: "What's the complaint? It focuses the triage and goes straight into the repair record." },
+      { key: 'review', title: 'Review & open', skip: false, assist: 'Everything is collected. Open the workspace to triage, build the CAB profile, and generate the wiki — every tab is now populated.' },
+    ];
+    const s = STEPS[w.step]; let body = '';
+    if (s.key === 'identify') body = `<div class="wiz-grid">
+        <label class="field"><span>Label</span><input id="wizLabel" value="${esc(w.identity.label)}" placeholder="e.g. 2016 F-250 PCM"></label>
+        <div class="row"><label class="field" style="flex:1"><span>Year</span><input id="wizYear" value="${esc(w.identity.year)}"></label><label class="field" style="flex:2"><span>Make</span><input id="wizMake" value="${esc(w.identity.make)}"></label><label class="field" style="flex:2"><span>Model</span><input id="wizModel" value="${esc(w.identity.model)}"></label></div>
+        ${w.match ? `<div class="prod-banner">${svg('catalog')} We've serviced this — <b>${esc([w.match.year, w.match.make, w.match.model].filter(Boolean).join(' '))}</b> · ${w.match.units} unit(s). The saved profile &amp; wiki will be reused.</div>` : ''}</div>`;
+    else if (s.key === 'diagram') body = `<div class="wiz-drop">${w.diagram ? `<div class="wiz-ok">${svg('check')} Diagram added${w.pinouts ? ` · ${w.pinouts} pins extracted` : ''}</div>` : `<button onclick="ui.wizDiagramPick()">${svg('upload')} Upload wiring diagram</button>`}
+        ${w.diagram && !w.pinouts ? `<button class="primary" onclick="ui.wizExtract()">${svg('bolt')} Extract pinout</button>` : ''}</div>`;
+    else if (s.key === 'pcb') body = `<div class="wiz-drop">${w.pcbImage ? `<img src="${w.pcbImage}" class="wiz-thumb">` : ''}
+        <button onclick="ui.wizPcbPick()">${svg('chip')} ${w.components ? 'Replace board photo' : 'Upload board photo'}</button>
+        ${w.components ? `<div class="wiz-ok">${svg('check')} ${w.components} components identified</div>` : ''}</div>`;
+    else if (s.key === 'symptom') body = `<textarea id="wizSymptom" class="wiz-symptom" placeholder="e.g. No communication / no-start; intermittent after warm-up…">${esc(w.symptom)}</textarea>`;
+    else body = `<div class="wiz-review">
+        <div class="wr-row"><span>Module</span><b>${esc([w.identity.year, w.identity.make, w.identity.model].filter(Boolean).join(' ') || w.identity.label || '—')}</b></div>
+        <div class="wr-row"><span>Wiring diagram</span><b>${w.diagram ? `added · ${w.pinouts} pins` : 'skipped'}</b></div>
+        <div class="wr-row"><span>Board photo</span><b>${w.components ? `${w.components} components` : 'skipped'}</b></div>
+        <div class="wr-row"><span>Symptom</span><b>${esc(w.symptom || 'not stated')}</b></div>
+        ${w.match ? `<div class="prod-banner">${svg('catalog')} Matches an existing product (${w.match.units} units serviced).</div>` : ''}</div>`;
+    ov.innerHTML = `<div class="wiz">
+      <div class="wiz-head"><span class="wordmark">CANOPY</span><span class="wiz-sub">New module onboarding</span><button class="iconbtn" style="margin-left:auto" title="Close" onclick="ui.wizardClose()">${svg('close')}</button></div>
+      <div class="wiz-stepper">${STEPS.map((x, i) => `<div class="wiz-pip ${i === w.step ? 'cur' : (i < w.step ? 'done' : '')}"><span>${i < w.step ? svg('check') : i + 1}</span>${x.title.split(' ')[0]}</div>`).join('')}</div>
+      <h2 class="wiz-title">${s.title}</h2>
+      <div class="wiz-body">${body}</div>
+      <div class="wiz-assist">${svg('assistant')}<span>${s.assist}</span></div>
+      <div class="wiz-nav"><button onclick="ui.wizardBack()" ${w.step === 0 ? 'disabled' : ''}>Back</button><div class="spacer"></div>${s.skip ? '<button class="ghost" onclick="ui.wizardNext(true)">Skip</button>' : ''}<button class="primary" onclick="ui.wizardNext()">${w.step === STEPS.length - 1 ? 'Open workspace' : 'Next'}</button></div>
+    </div>`;
+  },
+  wizardBack() { if (state.wizard.step > 0) { state.wizard.step--; this.renderWizard(); } },
+  async wizardNext(skip) {
+    const w = state.wizard;
+    if (w.step === 0) {  // create/update the project, check for a known product
+      const g = id => (el(id) || {}).value || '';
+      w.identity = { label: g('wizLabel'), make: g('wizMake'), model: g('wizModel'), year: g('wizYear') };
+      try {
+        if (!w.vid) { const v = await api.send('/api/vehicles', 'POST', w.identity); w.vid = v.id; }
+        else await api.send('/api/vehicles/' + w.vid, 'PATCH', w.identity);
+        const m = await api.get(`/api/vehicles/${w.vid}/product-match`); w.match = m.match;
+      } catch (e) { alert(e.message); return; }
+    } else if (w.step === 3 && !skip) {  // save symptom into the record
+      const t = (el('wizSymptom') || {}).value.trim();
+      if (t) { w.symptom = t; try { await api.send(`/api/vehicles/${w.vid}/memories`, 'POST', { content: 'Customer symptom: ' + t, kind: 'case' }); } catch {} }
+    } else if (w.step === 4) { return this.wizardFinish(); }
+    w.step++; this.renderWizard();
+  },
+  wizDiagramPick() { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,application/pdf';
+    inp.onchange = async e => { const f = e.target.files[0]; if (!f) return; aiToast.show('Uploading diagram…');
+      try { await api.upload(`/api/vehicles/${state.wizard.vid}/diagram`, f); state.wizard.diagram = true; aiToast.done('Diagram added'); this.renderWizard(); } catch (er) { aiToast.done('Error'); alert(er.message); } };
+    inp.click();
+  },
+  async wizExtract() { aiToast.show('Reading the pinout…', true);
+    try { const r = await api.send(`/api/vehicles/${state.wizard.vid}/extract`, 'POST', { all_pages: true }); state.wizard.pinouts = (r.pinouts || []).length; aiToast.done(`${state.wizard.pinouts} pins`); this.renderWizard(); }
+    catch (e) { aiToast.done('Error'); alert(e.message); }
+  },
+  wizPcbPick() { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader();
+      r.onload = async () => { state.wizard.pcbImage = r.result; aiToast.show('Analyzing board…', true);
+        try { const res = await api.send(`/api/vehicles/${state.wizard.vid}/pcb`, 'POST', { image: r.result }); state.wizard.components = (res.components || []).length; aiToast.done(`${state.wizard.components} components`); this.renderWizard(); }
+        catch (er) { aiToast.done('Error'); alert(er.message); } };
+      r.readAsDataURL(f); };
+    inp.click();
+  },
+  async wizardFinish() { const vid = state.wizard.vid; this.wizardClose(); if (vid) { await this.select(vid); ensureView('record'); ensureView('wiki'); } },
 
   // ---------- product library (reusable SKUs: profile + wiki + BOM + cases) ----------
   async loadProductMatch() {

@@ -329,6 +329,16 @@ class PgStore:
     def get_attachment(self, attachment_id: int) -> dict | None:
         return self._one("SELECT * FROM attachment WHERE id = %s", (attachment_id,))
 
+    def project_stats(self, vehicle_id: int) -> dict:
+        def cnt(table: str) -> int:
+            return self._one(
+                f"SELECT COUNT(*) AS n FROM {table} WHERE vehicle_id = %s", (vehicle_id,))["n"]
+        return {
+            "diagrams": cnt("diagram"), "pinouts": cnt("pinout"),
+            "components": cnt("pcb_component"), "memories": cnt("memory"),
+            "measurements": cnt("measurement"), "has_profile": cnt("profile") > 0,
+        }
+
     # --- product library ---
     _PRODUCT_COLS = ("sku", "part_number", "make", "model", "year", "module_class", "label",
                      "profile_yaml", "wiki", "bom", "symptoms", "source_vehicle_id")
