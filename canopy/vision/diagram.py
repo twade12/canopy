@@ -42,6 +42,20 @@ def _downscale_png(data: bytes) -> bytes:
     return out.getvalue()
 
 
+def downscale_photo(data: bytes, max_dim: int = 1600, quality: int = 85) -> bytes:
+    """Downscale a photograph and return compact JPEG bytes (photos compress far better as
+    JPEG than PNG — keeps phone uploads small and fast to serve back to the desktop)."""
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    if max(img.size) > max_dim:
+        scale = max_dim / max(img.size)
+        img = img.resize((int(img.width * scale), int(img.height * scale)))
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=quality, optimize=True)
+    return out.getvalue()
+
+
 def page_count(path: Path, mime: str) -> int:
     if is_pdf(path.name, mime):
         import fitz

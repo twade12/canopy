@@ -811,7 +811,9 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         row = store.get_attachment(attachment_id)
         if not row or not Path(row["path"]).exists():
             raise HTTPException(404, "not found")
-        return Response(content=Path(row["path"]).read_bytes(), media_type="image/png")
+        ext = Path(row["path"]).suffix.lower()
+        mt = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+        return Response(content=Path(row["path"]).read_bytes(), media_type=mt)
 
     @app.get("/api/attachment/{attachment_id}")
     def attachment_meta(attachment_id: int) -> dict:
@@ -867,10 +869,11 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         if file is None:
             raise HTTPException(400, "no file")
         data = await file.read()
-        path = config.uploads_dir / f"v{vid}_phone_{int(time.time() * 1000)}.png"
+        path = config.uploads_dir / f"v{vid}_phone_{int(time.time() * 1000)}.jpg"
         try:
-            path.write_bytes(dg._downscale_png(data))
+            path.write_bytes(dg.downscale_photo(data))  # compact JPEG, safety-downscale if large
         except Exception:
+            path = path.with_suffix(".png")
             path.write_bytes(data)
         rec = store.add_attachment(vid, str(path), kind=kind, note=file.filename or "phone photo")
         return {"ok": True, "id": rec["id"]}

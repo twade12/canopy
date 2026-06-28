@@ -824,7 +824,7 @@ const ui = {
   phoneModal() {
     if (!state.current) return; const id = state.current.id;
     const m = document.createElement('div'); m.className = 'modal'; m.style.width = 'min(520px,94vw)';
-    m.innerHTML = `<div class="m-head">${svg('phone')} Pair a phone</div><div class="m-sub">Scan with your phone's camera (same Wi-Fi / VPN). Photos you take appear here and can go straight into PCB analysis or Triage.</div>
+    m.innerHTML = `<div class="m-head">${svg('phone')} Pair a phone</div><div class="m-sub">Scan with your phone's camera (same Wi-Fi / VPN). Photos appear below within ~1-2s — tap <b>PCB</b> to analyze the board or <b>Triage</b> to attach to the conversation.</div>
       <div class="m-body" style="text-align:center"><img src="/api/vehicles/${id}/pair/qr?t=${Date.now()}" style="width:210px;height:210px;border-radius:10px;border:1px solid var(--border)">
         <div class="muted" id="phoneUrl" style="font-size:11px;margin-top:6px;word-break:break-all"></div>
         <div id="phoneGal" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px"></div></div>
@@ -836,7 +836,7 @@ const ui = {
       try { const list = await api.get(`/api/vehicles/${id}/attachments`);
         for (const a of list.slice().reverse()) { if (a.kind !== 'phone' || state.phoneSeen.has(a.id)) continue; state.phoneSeen.add(a.id);
           gal.insertAdjacentHTML('afterbegin', `<div><img src="/api/attachment/${a.id}/image" style="width:100%;border-radius:8px;border:1px solid var(--border)"><div class="row" style="gap:4px;margin-top:3px;justify-content:center"><button class="ghost" style="font-size:10px;padding:3px 7px" onclick="ui.phoneUse(${a.id},'pcb')">PCB</button><button class="ghost" style="font-size:10px;padding:3px 7px" onclick="ui.phoneUse(${a.id},'triage')">Triage</button></div></div>`); }
-      } catch {} }, 2000);
+      } catch {} }, 1200);
   },
   async fetchDataUrl(url) { const r = await fetch(url); const b = await r.blob(); return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }); },
   async phoneUse(attId, target) {
