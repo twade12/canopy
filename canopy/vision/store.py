@@ -96,6 +96,15 @@ CREATE TABLE IF NOT EXISTS measurement (
     kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
     attachment_id INTEGER, note TEXT, created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_diagram_vehicle ON diagram(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_pinout_vehicle ON pinout(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_memory_vehicle ON memory(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_tag_vehicle ON tag(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_message_vehicle ON message(vehicle_id, channel);
+CREATE INDEX IF NOT EXISTS idx_attachment_vehicle ON attachment(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_pcb_vehicle ON pcb_component(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_pcb_attachment ON pcb_component(attachment_id);
+CREATE INDEX IF NOT EXISTS idx_measurement_vehicle ON measurement(vehicle_id);
 """
 
 

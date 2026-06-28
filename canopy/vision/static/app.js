@@ -53,9 +53,19 @@ const GUIDED_PHASES = [
 const meta = k => VIEWS.find(v => v.key === k) || { label: k, icon: 'diagram' };
 
 const api = {
+  _cache: new Map(),  // url -> { t, data } for cacheable GETs (cget)
   async get(p) { const r = await fetch(p); if (!r.ok) throw await err(r); return r.json(); },
-  async send(p, m, b) { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); if (!r.ok) throw await err(r); return r.json(); },
-  async upload(p, f) { const fd = new FormData(); fd.append('file', f); const r = await fetch(p, { method: 'POST', body: fd }); if (!r.ok) throw await err(r); return r.json(); },
+  // cacheable GET: serves a fresh-enough cached copy instantly, else fetches. Writes invalidate.
+  async cget(p, ttl = 20000) {
+    const hit = this._cache.get(p);
+    if (hit && Date.now() - hit.t < ttl) return structuredClone(hit.data);
+    const data = await this.get(p);
+    this._cache.set(p, { t: Date.now(), data });
+    return structuredClone(data);
+  },
+  _bust(p) { if (p) for (const k of this._cache.keys()) { if (k === p || k.startsWith(p)) this._cache.delete(k); } },
+  async send(p, m, b) { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); if (!r.ok) throw await err(r); this._cache.clear(); return r.json(); },
+  async upload(p, f) { const fd = new FormData(); fd.append('file', f); const r = await fetch(p, { method: 'POST', body: fd }); if (!r.ok) throw await err(r); this._cache.clear(); return r.json(); },
 };
 async function err(r) { let d; try { d = (await r.json()).detail; } catch { d = r.statusText; } return new Error(d || ('HTTP ' + r.status)); }
 const el = id => document.getElementById(id);
@@ -371,7 +381,7 @@ const ui = {
     state.drag = null; saveDock(); renderDock(); },
 
   // ---------- records / projects ----------
-  async loadRecords() { state.records = await api.get('/api/vehicles'); this.renderRecords(); },
+  async loadRecords() { state.records = await api.cget('/api/vehicles'); this.renderRecords(); },
   renderRecords() {
     const q = (el('projSearch')?.value || '').toLowerCase(), sort = el('projSort')?.value || 'recent', grp = el('projGroup')?.value || 'none';
     let recs = state.records.filter(v => { const hay = [v.label, v.vin, v.make, v.model, v.year, ...(v.tags || [])].join(' ').toLowerCase(); return !q || hay.includes(q); });
@@ -387,7 +397,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = ''; state.guidedThinking = null; state.profileYaml = null; state.profileObj = null; state.profileSaved = false; state.measurements = null;
+  async select(id) { state.current = await api.cget('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = ''; state.guidedThinking = null; state.profileYaml = null; state.profileObj = null; state.profileSaved = false; state.measurements = null;
     try { sessionStorage.setItem('canopy-project', id); } catch {} setTitle(); this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
@@ -1193,10 +1203,10 @@ const ui = {
     const items = (state.kbList || []).filter(a => !q || (a.title + ' ' + a.tags.join(' ')).toLowerCase().includes(q));
     return items.map(a => `<div class="kb-item ${a.slug === state.kbSlug ? 'sel' : ''}" onclick="ui.kbOpen('${a.slug}')"><div class="kb-title">${esc(a.title)}</div><div class="kb-tags">${a.tags.slice(0, 5).map(t => `<span class="tagchip">${esc(t)}</span>`).join('')}</div></div>`).join('') || '<div class="muted" style="padding:8px">No matches.</div>';
   },
-  async loadKb() { try { state.kbList = await api.get('/api/knowledge'); } catch { state.kbList = []; } rerenderView('knowledge'); },
+  async loadKb() { try { state.kbList = await api.cget('/api/knowledge', 6e5); } catch { state.kbList = []; } rerenderView('knowledge'); },
   kbSearch(v) { state.kbQuery = v; const l = el('kbList'); if (l) l.innerHTML = this._kbItems(); },
   async kbOpen(slug) { state.kbSlug = slug;
-    try { const a = await api.get('/api/knowledge/' + slug); state.kbBody = `# ${a.title}\n\n${a.body}`; }
+    try { const a = await api.cget('/api/knowledge/' + slug, 6e5); state.kbBody = `# ${a.title}\n\n${a.body}`; }
     catch { state.kbBody = '_Could not load this article._'; }
     rerenderView('knowledge');
   },

@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
+import threading
 import time
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -224,6 +227,7 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     config.ensure_dirs()
 
     app = FastAPI(title="CANOPY Vision", docs_url="/api/docs")
+    app.add_middleware(GZipMiddleware, minimum_size=600)  # compress JSON/HTML/JS
     secret = auth.load_secret(config.data_dir)
 
     @app.middleware("http")
@@ -276,6 +280,16 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     client = OllamaClient(
         config.ollama_url, config.model, timeout=config.request_timeout
     )
+
+    if os.environ.get("CANOPY_WARM", "1") != "0" and not os.environ.get("PYTEST_CURRENT_TEST"):
+        # Best-effort: preload the model so the first triage/guided call isn't a cold start.
+        def _warm() -> None:
+            try:
+                client.chat([ChatMessage("user", "ok")], temperature=0.0)
+            except Exception:
+                pass
+        threading.Thread(target=_warm, daemon=True).start()
+
     image_cache: dict[tuple[int, int], list[str]] = {}
 
     def page_image(vehicle_id: int, page: int) -> list[str]:
@@ -959,13 +973,20 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         return {"id": att["id"], "kind": att["kind"], "note": att["note"] or ""}
 
     @app.get("/api/attachment/{attachment_id}/image")
-    def attachment_image(attachment_id: int) -> Response:
+    def attachment_image(attachment_id: int, request: Request) -> Response:
         row = store.get_attachment(attachment_id)
         if not row or not Path(row["path"]).exists():
             raise HTTPException(404, "not found")
-        ext = Path(row["path"]).suffix.lower()
+        p = Path(row["path"])
+        st = p.stat()
+        # attachment files are written once -> safe to cache hard with a revalidation ETag
+        etag = f'"{attachment_id}-{int(st.st_mtime)}-{st.st_size}"'
+        cache = {"Cache-Control": "private, max-age=604800", "ETag": etag}
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=cache)
+        ext = p.suffix.lower()
         mt = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
-        return Response(content=Path(row["path"]).read_bytes(), media_type=mt)
+        return Response(content=p.read_bytes(), media_type=mt, headers=cache)
 
     @app.get("/api/attachment/{attachment_id}")
     def attachment_meta(attachment_id: int) -> dict:
@@ -1056,14 +1077,16 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     # --- house knowledge base (curated troubleshooting best-practices) ---------
     @app.get("/api/knowledge")
-    def knowledge_list() -> list[dict]:
+    def knowledge_list(response: Response) -> list[dict]:
+        response.headers["Cache-Control"] = "private, max-age=600"  # KB is static within a run
         return [{"slug": a.slug, "title": a.title, "tags": a.tags} for a in kb.load_articles()]
 
     @app.get("/api/knowledge/{slug}")
-    def knowledge_article(slug: str) -> dict:
+    def knowledge_article(slug: str, response: Response) -> dict:
         a = next((a for a in kb.load_articles() if a.slug == slug), None)
         if a is None:
             raise HTTPException(404, "no such article")
+        response.headers["Cache-Control"] = "private, max-age=600"
         return {"slug": a.slug, "title": a.title, "tags": a.tags, "body": a.body}
 
     # --- bench instruments (DMM / scope / signal generator) --------------------
