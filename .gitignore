@@ -34,3 +34,4 @@ traces/*.asc
 
 # sample board photos (large)
 ECU_image_sample*
+.bench/
