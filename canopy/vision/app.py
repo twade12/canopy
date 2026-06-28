@@ -23,6 +23,8 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from canopy.profiles import generate as profile_generate
+from canopy.profiles.schema import ModuleProfile
 from canopy.vision import auth, extract
 from canopy.vision import bench as benchmod
 from canopy.vision import diagram as dg
@@ -149,6 +151,10 @@ class AttachmentUpdate(BaseModel):
 class AnnotationBody(BaseModel):
     image: str       # base64 PNG of the flattened (image + drawn markup) annotation
     note: str = ""   # caption
+
+
+class ProfileBody(BaseModel):
+    yaml: str
 
 
 class GuidedNextBody(BaseModel):
@@ -782,6 +788,34 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def pcb_component_delete(comp_id: int) -> dict:
         store.delete_pcb_component(comp_id)
         return {"ok": True}
+
+    # --- module profile (CAB contract: diagram/PCB -> confirmed profile) -------
+    def _profile_payload(yaml_text: str, saved: bool) -> dict:
+        try:
+            prof = ModuleProfile.from_yaml(yaml_text).model_dump()
+        except Exception:
+            prof = None
+        return {"yaml": yaml_text, "saved": saved, "profile": prof}
+
+    @app.get("/api/vehicles/{vehicle_id}/profile")
+    def get_profile(vehicle_id: int) -> dict:
+        saved = store.get_profile(vehicle_id)
+        if saved:
+            return _profile_payload(saved, True)
+        return _profile_payload(profile_generate.build_profile(store, vehicle_id).to_yaml(), False)
+
+    @app.post("/api/vehicles/{vehicle_id}/profile/generate")
+    def regenerate_profile(vehicle_id: int) -> dict:
+        return _profile_payload(profile_generate.build_profile(store, vehicle_id).to_yaml(), False)
+
+    @app.put("/api/vehicles/{vehicle_id}/profile")
+    def save_profile(vehicle_id: int, body: ProfileBody) -> dict:
+        try:
+            ModuleProfile.from_yaml(body.yaml)  # validate before persisting
+        except Exception as e:
+            raise HTTPException(400, f"invalid profile: {e}") from e
+        store.save_profile(vehicle_id, body.yaml)
+        return {"ok": True, "saved": True}
 
     # --- guided walkthrough (physics-first, step-by-step) ----------------------
     @app.get("/api/vehicles/{vehicle_id}/guided/log")

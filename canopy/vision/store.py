@@ -86,6 +86,10 @@ CREATE TABLE IF NOT EXISTS pcb_component (
     attachment_id INTEGER, label TEXT, box TEXT, function TEXT, chk TEXT, part TEXT,
     confidence REAL, user_label TEXT, user_note TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS profile (
+    vehicle_id INTEGER PRIMARY KEY REFERENCES vehicle(id) ON DELETE CASCADE,
+    yaml TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 """
 
 
@@ -362,6 +366,19 @@ class Store:
             "SELECT * FROM attachment WHERE vehicle_id = ? ORDER BY id DESC", (vehicle_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # --- module profile (the CAB contract) ---
+    def get_profile(self, vehicle_id: int) -> str | None:
+        row = self._conn.execute(
+            "SELECT yaml FROM profile WHERE vehicle_id = ?", (vehicle_id,)).fetchone()
+        return row["yaml"] if row else None
+
+    def save_profile(self, vehicle_id: int, yaml_text: str) -> None:
+        self._conn.execute(
+            "INSERT INTO profile (vehicle_id, yaml, updated_at) VALUES (?,?,?)"
+            " ON CONFLICT(vehicle_id) DO UPDATE SET yaml = excluded.yaml,"
+            " updated_at = excluded.updated_at", (vehicle_id, yaml_text, _now()))
+        self._conn.commit()
 
     def get_attachment(self, attachment_id: int) -> dict | None:
         row = self._conn.execute(

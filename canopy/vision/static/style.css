@@ -250,6 +250,21 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .modal.lightbox .lb-cap { display: flex; gap: 8px; margin-top: 10px; }
 .modal.lightbox .lb-cap input { flex: 1; }
 
+/* CAB module profile */
+.prof-col { display: flex; flex-direction: column; height: 100%; overflow: auto; padding: 12px 14px; }
+.prof-summary { font-size: 13px; margin-bottom: 8px; }
+.prof-cards { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.prof-harness { flex: none; max-height: 40vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.prof-harness table { border-collapse: collapse; width: 100%; }
+.prof-harness th, .prof-harness td { border-bottom: 1px solid var(--border); padding: 4px 9px; font-size: 12px; text-align: left; white-space: nowrap; }
+.prof-harness th { background: var(--panel-2); position: sticky; top: 0; }
+.prof-harness .pin { padding: 1px 6px; border-radius: 4px; font-size: 11px; background: var(--panel-2); }
+.prof-harness .pin.can { background: rgba(14,138,166,.18); color: var(--cyan); }
+.prof-harness .pin.pwr { background: rgba(239,68,68,.16); color: #ef4444; }
+.prof-harness .pin.gnd { background: rgba(120,120,120,.2); }
+.prof-yaml { flex: none; min-height: 240px; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.45; white-space: pre; overflow: auto; }
+.tagchip.ok { background: var(--accent); color: #fff; }
+
 /* guided walkthrough */
 .guided-col { display: flex; flex-direction: column; height: 100%; overflow: auto; padding: 12px 14px; gap: 4px; }
 .g-ladder { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin-bottom: 10px; }

@@ -20,6 +20,7 @@ const ICON = {
   book: '<path d="M5 4h11a2 2 0 012 2v14H7a2 2 0 00-2 2z"/><path d="M9 4v14"/>',
   guide: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
   check: '<path d="M5 12l4 4L19 6"/>',
+  cab: '<path d="M3 4h18v16H3z"/><path d="M7 4v16M11 4v16M15 4v16M19 4v16"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -34,7 +35,7 @@ const VIEWS = [
   { key: 'guided', label: 'Guided', icon: 'guide' },
   { key: 'triage', label: 'Triage', icon: 'triage' }, { key: 'pcb', label: 'PCB', icon: 'chip' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
-  { key: 'wiki', label: 'Wiki', icon: 'record' },
+  { key: 'profile', label: 'Profile', icon: 'cab' }, { key: 'wiki', label: 'Wiki', icon: 'record' },
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
   { key: 'knowledge', label: 'Knowledge', icon: 'book' },
@@ -295,7 +296,7 @@ function renderViewInto(view, c) {
   const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge };
   if (globals[view]) return globals[view].call(ui, c);
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
-  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki, guided: ui.viewGuided })[view].call(ui, c);
+  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki, guided: ui.viewGuided, profile: ui.viewProfile })[view].call(ui, c);
 }
 
 // ================= UI =================
@@ -344,7 +345,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = ''; state.guidedThinking = null;
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = ''; state.guidedThinking = null; state.profileYaml = null; state.profileObj = null; state.profileSaved = false;
     try { sessionStorage.setItem('canopy-project', id); } catch {} setTitle(); this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
@@ -871,6 +872,48 @@ const ui = {
     } catch (e) { alert(e.message); }
   },
   guidedCompile() { ensureView('wiki'); this.loadWiki(true); },
+
+  // ---------- CAB module profile (diagram/PCB -> confirmed test profile) ----------
+  viewProfile(c) {
+    if (state.profileYaml == null) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.loadProfile(); return; }
+    const p = state.profileObj;
+    const cards = (p && p.active_cards) || [];
+    const harness = (p && p.harness_map) || [];
+    const roleClass = r => ({ can_h: 'can', can_l: 'can', can_fd_h: 'can', can_fd_l: 'can', lin: 'can', power: 'pwr', ignition: 'pwr', accessory: 'pwr', ground: 'gnd' }[r] || '');
+    c.innerHTML = `<div class="prof-col">
+      <div class="row" style="margin-bottom:8px"><button onclick="ui.profileRegenerate()">${svg('reset')} Regenerate from diagram/PCB</button><button class="primary" onclick="ui.profileSave()">${svg('check')} Save / confirm</button><button onclick="ui.profileDownload()">${svg('upload')} Download .yaml</button>
+        <span class="tagchip ${state.profileSaved ? 'ok' : ''}" style="margin-left:auto;align-self:center">${state.profileSaved ? 'confirmed' : 'draft — review before energizing'}</span></div>
+      <div class="warn" style="color:var(--cyan);font-size:12px;margin-bottom:8px">${svg('warn')} CONFIRM BEFORE ENERGIZE: verify power, ground, and CAN pins against the wiring diagram before CAB closes any relay.</div>
+      ${p ? `<div class="prof-summary"><b>${esc(p.identity.module_class)}</b> · ${esc([p.identity.year, p.identity.make, p.identity.model].filter(Boolean).join(' ') || p.identity.label)} · connector ${esc(p.connector || '—')}
+        <div class="prof-cards">${cards.map(cd => `<span class="tagchip" title="CAB card">${esc(cd)}</span>`).join('')}</div></div>
+        <div class="prof-harness"><table><thead><tr><th>Pin</th><th>Signal</th><th>Role</th><th>Header</th><th>CAB card</th><th>Ch</th></tr></thead><tbody>
+        ${harness.map(h => `<tr><td>${esc(h.module_pin)}</td><td>${esc(h.signal)}</td><td><span class="pin ${roleClass(h.role)}">${esc(h.role)}</span></td><td>${esc(h.header_pin)}</td><td>${esc(h.card || '—')}</td><td>${esc(h.channel)}</td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="warn">Could not parse the profile YAML — fix it below.</div>'}
+      <div class="muted" style="font-size:11px;margin:10px 0 4px">Profile YAML (source of truth — edit and Save). This is the CAB test profile.</div>
+      <textarea id="profYaml" class="prof-yaml" spellcheck="false">${esc(state.profileYaml)}</textarea>
+    </div>`;
+  },
+  async loadProfile() {
+    try { const r = await api.get(`/api/vehicles/${state.current.id}/profile`); state.profileYaml = r.yaml || ''; state.profileObj = r.profile; state.profileSaved = !!r.saved; }
+    catch (e) { state.profileYaml = '# could not load profile\n'; state.profileObj = null; }
+    rerenderView('profile');
+  },
+  async profileRegenerate() {
+    if (state.profileSaved && !confirm('Regenerate a fresh draft from the current pinout/PCB? Your saved profile stays until you Save the new one.')) return;
+    try { const r = await api.send(`/api/vehicles/${state.current.id}/profile/generate`, 'POST'); state.profileYaml = r.yaml; state.profileObj = r.profile; state.profileSaved = false; rerenderView('profile'); aiToast.done('Draft regenerated'); }
+    catch (e) { alert(e.message); }
+  },
+  async profileSave() {
+    const yaml = (el('profYaml') || {}).value || state.profileYaml;
+    try { await api.send(`/api/vehicles/${state.current.id}/profile`, 'PUT', { yaml }); state.profileYaml = yaml; state.profileSaved = true;
+      const r = await api.get(`/api/vehicles/${state.current.id}/profile`); state.profileObj = r.profile; rerenderView('profile'); aiToast.done('Profile confirmed'); }
+    catch (e) { alert(e.message); }
+  },
+  profileDownload() {
+    const yaml = (el('profYaml') || {}).value || state.profileYaml;
+    const a = document.createElement('a'); a.href = 'data:text/yaml;charset=utf-8,' + encodeURIComponent(yaml);
+    a.download = `${(state.current.label || 'module').replace(/[^\w.-]/g, '_')}.profile.yaml`; a.click();
+  },
 
   // ---------- house knowledge base browser ----------
   viewKnowledge(c) {

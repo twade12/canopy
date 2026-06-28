@@ -69,6 +69,10 @@ CREATE TABLE IF NOT EXISTS pcb_component (
     attachment_id INTEGER, label TEXT, box TEXT, function TEXT, chk TEXT, part TEXT,
     confidence REAL, user_label TEXT, user_note TEXT, created_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE IF NOT EXISTS profile (
+    vehicle_id INTEGER PRIMARY KEY REFERENCES vehicle(id) ON DELETE CASCADE,
+    yaml TEXT NOT NULL, updated_at TIMESTAMPTZ NOT NULL
+);
 """
 
 
@@ -302,6 +306,18 @@ class PgStore:
 
     def get_attachment(self, attachment_id: int) -> dict | None:
         return self._one("SELECT * FROM attachment WHERE id = %s", (attachment_id,))
+
+    # --- module profile (the CAB contract) ---
+    def get_profile(self, vehicle_id: int) -> str | None:
+        row = self._one("SELECT yaml FROM profile WHERE vehicle_id = %s", (vehicle_id,))
+        return row["yaml"] if row else None
+
+    def save_profile(self, vehicle_id: int, yaml_text: str) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO profile (vehicle_id, yaml, updated_at) VALUES (%s,%s,%s)"
+                " ON CONFLICT (vehicle_id) DO UPDATE SET yaml = EXCLUDED.yaml,"
+                " updated_at = EXCLUDED.updated_at", (vehicle_id, yaml_text, _now()))
 
     def update_attachment(self, attachment_id: int, *, note: str) -> dict | None:
         return self._one(
