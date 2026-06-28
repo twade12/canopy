@@ -1,62 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" width="1200" height="380" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
-  <defs>
-    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#F4FBF7"/><stop offset="1" stop-color="#E7F3EC"/>
-    </linearGradient>
-    <linearGradient id="can" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#2E8B6F"/><stop offset="0.5" stop-color="#43B88E"/>
-      <stop offset="0.55" stop-color="#5fd3a6"/><stop offset="1" stop-color="#2E8B6F"/>
-    </linearGradient>
-    <linearGradient id="canLabel" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0E3A2B"/><stop offset="1" stop-color="#0a2a1f"/>
-    </linearGradient>
-    <linearGradient id="pieTop" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FBD786"/><stop offset="1" stop-color="#F3B95F"/>
-    </linearGradient>
-    <linearGradient id="word" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0F5138"/><stop offset="1" stop-color="#13724E"/>
-    </linearGradient>
-  </defs>
-
-  <rect width="1200" height="380" rx="34" fill="url(#panel)"/>
-  <rect x="3" y="3" width="1194" height="374" rx="31" fill="none" stroke="#CBE6D8" stroke-width="2"/>
-
-  <!-- ===== emblem: can with pie slice ===== -->
-  <!-- steam -->
-  <g stroke="#9FC9B6" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.8">
-    <path d="M150 95 q -12 -16 0 -32 q 12 -16 0 -32"/>
-    <path d="M188 88 q -12 -16 0 -32 q 12 -16 0 -32"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 300" width="1180" height="300"
+     font-family="Inter, 'Segoe UI', -apple-system, Helvetica, Arial, sans-serif">
+  <!-- chip badge — matches the app favicon (canopy/vision/static/favicon.svg) -->
+  <g transform="translate(40,50) scale(6.25)">
+    <rect width="32" height="32" rx="7" fill="#0f9d6b"/>
+    <g stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="10" y="10" width="12" height="12" rx="2"/>
+      <path d="M14 6v4M19 6v4M14 22v4M19 22v4M6 14h4M6 19h4M22 14h4M22 19h4"/>
+    </g>
   </g>
-
-  <!-- pie slice sticking out of the can opening -->
-  <g>
-    <!-- slice top face (wedge) -->
-    <path d="M168 150 L300 96 L322 150 Z" fill="url(#pieTop)" stroke="#D99B45" stroke-width="3" stroke-linejoin="round"/>
-    <!-- crust at the wide outer edge -->
-    <path d="M300 96 L322 150" stroke="#C77B36" stroke-width="14" stroke-linecap="round"/>
-    <!-- filling hint -->
-    <circle cx="232" cy="128" r="6" fill="#E0892F"/>
-    <circle cx="258" cy="120" r="5" fill="#E0892F"/>
-    <circle cx="214" cy="135" r="4" fill="#E0892F"/>
-  </g>
-
-  <!-- can body -->
-  <g>
-    <ellipse cx="170" cy="300" rx="84" ry="20" fill="#1f6b52"/>
-    <rect x="86" y="150" width="168" height="150" fill="url(#can)"/>
-    <!-- label band: CAN waveform -->
-    <rect x="86" y="206" width="168" height="92" fill="url(#canLabel)"/>
-    <line x1="94" y1="252" x2="246" y2="252" stroke="#1c4a39" stroke-width="2"/>
-    <polyline points="100.0,252.0 100.0,241.0 114.0,241.0 114.0,241.0 114.0,252.0 128.0,252.0 128.0,252.0 128.0,241.0 142.0,241.0 142.0,241.0 142.0,241.0 156.0,241.0 156.0,241.0 156.0,252.0 170.0,252.0 170.0,252.0 170.0,241.0 184.0,241.0 184.0,241.0 184.0,252.0 198.0,252.0 198.0,252.0 198.0,241.0 212.0,241.0 212.0,241.0 212.0,241.0 226.0,241.0 226.0,241.0 226.0,252.0 240.0,252.0 240.0,252.0" fill="none" stroke="#5fd3a6" stroke-width="3.5" stroke-linejoin="round"/>
-    <polyline points="100.0,252.0 100.0,263.0 114.0,263.0 114.0,263.0 114.0,252.0 128.0,252.0 128.0,252.0 128.0,263.0 142.0,263.0 142.0,263.0 142.0,263.0 156.0,263.0 156.0,263.0 156.0,252.0 170.0,252.0 170.0,252.0 170.0,263.0 184.0,263.0 184.0,263.0 184.0,252.0 198.0,252.0 198.0,252.0 198.0,263.0 212.0,263.0 212.0,263.0 212.0,263.0 226.0,263.0 226.0,263.0 226.0,252.0 240.0,252.0 240.0,252.0" fill="none" stroke="#34D399" stroke-width="3.5" stroke-linejoin="round"/>
-    <!-- can rim / open lid -->
-    <ellipse cx="170" cy="150" rx="84" ry="22" fill="#6fe0b4"/>
-    <ellipse cx="170" cy="150" rx="70" ry="16" fill="#0d2c20"/>
-    <ellipse cx="170" cy="147" rx="70" ry="14" fill="#16513a"/>
-  </g>
-
-  <!-- ===== wordmark ===== -->
-  <text x="300" y="172" fill="#10503A" font-size="132" font-weight="bold" letter-spacing="2">CANOPY</text>
-  <text x="306" y="218" fill="#2E8B6F" font-size="22" font-weight="bold" letter-spacing="2.0">CAN MODULE TEST &amp; DIAGNOSTIC STATION</text>
-  <text x="306" y="250" fill="#9bbcae" font-size="18" font-style="italic" letter-spacing="1">“Can ’o Pie”</text>
+  <!-- wordmark + tagline -->
+  <text x="288" y="175" font-size="132" font-weight="800" fill="#0f9d6b"
+        letter-spacing="2">CANOPY</text>
+  <text x="292" y="228" font-size="29" font-weight="600" fill="#16241d" letter-spacing="0.5"
+        opacity="0.92">Universal CAN module test &amp; diagnostic station</text>
+  <text x="292" y="262" font-size="20" fill="#6a7c73" letter-spacing="0.5">CAN-Anchored
+    Reliability &amp; Anomaly Recording sYstem</text>
 </svg>
