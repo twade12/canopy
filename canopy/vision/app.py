@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import time
 from pathlib import Path
 
@@ -614,8 +615,28 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
 
     # --- guided repair triage (multimodal: board/scope photos) -----------------
     def _decode_b64_image(raw: str) -> str:
-        """Normalize a possibly-data-URL base64 image to bare base64."""
-        return raw.split(",", 1)[1] if raw.startswith("data:") else raw
+        """Return bare base64 image bytes for an image given as a data URL, raw base64, or an
+        ``/api/attachment/{id}/image`` reference (the PCB 'Send to Triage' path passes the latter,
+        which must NOT be base64-decoded as-is — that yields garbage Ollama rejects)."""
+        s = (raw or "").strip()
+        m = re.search(r"/api/attachment/(\d+)/image", s)
+        if m:
+            att = store.get_attachment(int(m.group(1)))
+            if att and Path(att["path"]).exists():
+                return base64.b64encode(Path(att["path"]).read_bytes()).decode()
+            raise HTTPException(400, "referenced image not found")
+        return s.split(",", 1)[1] if s.startswith("data:") else s
+
+    def _clean_image_b64(raw: str) -> str:
+        """Decode + re-encode an image to a clean PNG so the model never gets an unknown format;
+        raises 400 (not a downstream 500) if the bytes aren't a valid image."""
+        b64 = _decode_b64_image(raw)
+        try:
+            return base64.b64encode(dg._downscale_png(base64.b64decode(b64))).decode()
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(400, "unsupported or corrupt image") from e
 
     @app.get("/api/vehicles/{vehicle_id}/triage/messages")
     def triage_messages(vehicle_id: int) -> list[dict]:
@@ -631,7 +652,7 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         images: list[str] = []
         note = body.message
         if body.image:
-            b64 = _decode_b64_image(body.image)
+            b64 = _clean_image_b64(body.image)  # valid PNG, resolves attachment URLs
             images = [b64]
             try:
                 path = config.uploads_dir / f"v{vehicle_id}_triage_{int(time.time() * 1000)}.png"
