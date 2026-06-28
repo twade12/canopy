@@ -20,6 +20,13 @@ from dataclasses import dataclass, field
 from canopy.config import CanConfig
 from canopy.hal.can_iface import CanInterface
 from canopy.hal.isotp import make_can_stack
+from canopy.vision.restbus import RestbusSimulator
+
+
+def dtc_to_str(b0: int, b1: int, b2: int) -> str:
+    """3-byte UDS DTC -> standard string, e.g. P0420 (+ b2 = failure-type byte)."""
+    sysname = ["P", "C", "B", "U"][(b0 >> 6) & 0x3]
+    return f"{sysname}{(b0 >> 4) & 0x3}{b0 & 0xF:X}{b1 >> 4:X}{b1 & 0xF:X}"
 
 
 def list_can_interfaces() -> list[dict]:
@@ -63,6 +70,7 @@ class BenchManager:
     _thread: threading.Thread | None = None
     _stop: threading.Event = field(default_factory=threading.Event)
     _lock: threading.Lock = field(default_factory=threading.Lock)
+    restbus: RestbusSimulator = field(default_factory=RestbusSimulator)
 
     # --- connection ------------------------------------------------------------
     def status(self) -> dict:
@@ -107,6 +115,7 @@ class BenchManager:
                 })
 
     def disconnect(self) -> dict:
+        self.restbus.stop()
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=1.5)
@@ -118,7 +127,39 @@ class BenchManager:
 
     def recent_frames(self, since: int = 0) -> list[dict]:
         with self._lock:
-            return [f for f in self.frames if f["seq"] > since]
+            out = [dict(f) for f in self.frames if f["seq"] > since]
+        if self.restbus.db is not None:
+            for f in out:
+                raw = bytes.fromhex(f["data"].replace(" ", ""))
+                dec = self.restbus.decode(int(f["id"], 16), raw)
+                if dec:
+                    f["decoded"] = dec
+        return out
+
+    # --- restbus (broadcast the absent ECUs so the DUT wakes up) ---------------
+    def restbus_start(self, names: list[str] | None = None) -> dict:
+        if self.iface is None:
+            raise RuntimeError("not connected")
+        return self.restbus.start(self.iface.bus, names)
+
+    def restbus_stop(self) -> dict:
+        return self.restbus.stop()
+
+    def read_dtcs(self, request_id: int, response_id: int) -> dict:
+        """UDS ReadDTCInformation (0x19 0x02) -> decoded DTC list."""
+        r = self.uds_request(request_id, response_id, b"\x19\x02\xff", timeout=2.5)
+        if not r.get("ok") or not r.get("response"):
+            return {"ok": False, "error": r.get("error", "no response"), "dtcs": []}
+        raw = bytes.fromhex(r["response"].replace(" ", ""))
+        if len(raw) < 3 or raw[0] != 0x59:
+            return {"ok": False, "error": "unexpected response", "dtcs": []}
+        body = raw[3:]
+        dtcs = []
+        for i in range(0, len(body) - 3, 4):
+            b0, b1, b2, status = body[i], body[i + 1], body[i + 2], body[i + 3]
+            dtcs.append({"code": dtc_to_str(b0, b1, b2), "ftb": f"0x{b2:02X}",
+                         "status": f"0x{status:02X}", "confirmed": bool(status & 0x08)})
+        return {"ok": True, "dtcs": dtcs}
 
     # --- sending ---------------------------------------------------------------
     def send_frame(self, arbitration_id: int, data: bytes, *, extended: bool = False) -> dict:

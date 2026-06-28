@@ -528,10 +528,17 @@ const ui = {
       <div class="bench-section"><h4>${svg('link')} Connection</h4>
         <div class="row"><select id="bIface" style="flex:1"></select><input id="bChannel" placeholder="can0" value="vcan0" style="width:110px"><input id="bBitrate" value="500000" style="width:95px" title="bitrate">
           <button class="primary" id="bConnectBtn" onclick="ui.benchConnect()">Connect</button><button onclick="ui.benchDisconnect()">Disconnect</button></div>
-        <div class="muted" style="margin-top:6px">Pick a SocketCAN device (USB-to-CAN adapter or vcan0), or 'virtual' for a dry run.</div></div>
+        <div class="muted" style="margin-top:6px">Pick a SocketCAN device (a CANable / USB-to-CAN adapter or vcan0), or 'virtual' for a dry run.</div></div>
+      <div class="bench-section"><h4>${svg('cab')} Restbus simulation <span id="rbState" class="muted" style="font-weight:400;font-size:11px"></span></h4>
+        <div class="muted" style="margin-bottom:6px">Load a platform DBC, then broadcast the absent ECUs' periodic frames (ignition, NM, speed…) so the module wakes up as if installed.</div>
+        <div class="row"><input id="rbFile" type="file" accept=".dbc" style="flex:1"><button onclick="ui.benchDbcUpload()">Load DBC</button><button class="primary" onclick="ui.benchRestbusStart()">Start</button><button onclick="ui.benchRestbusStop()">Stop</button></div>
+        <div id="rbMsgs" class="rb-msgs" style="margin-top:8px"></div></div>
       <div class="bench-section"><h4>Probe ECU</h4>
         <div class="row"><input id="bReq" value="0x7E0" style="width:90px" title="request id"><input id="bRsp" value="0x7E8" style="width:90px" title="response id"><button class="primary" onclick="ui.benchPing()">Ping &amp; confirm connectivity</button></div>
         <div id="bPingOut" class="kvp" style="margin-top:9px"></div></div>
+      <div class="bench-section"><h4>Diagnostic trouble codes (UDS 0x19)</h4>
+        <div class="row"><input id="bDReq" value="0x7E0" style="width:90px"><input id="bDRsp" value="0x7E8" style="width:90px"><button class="primary" onclick="ui.benchReadDtcs()">Read DTCs</button></div>
+        <div id="bDtcOut" style="margin-top:8px"></div></div>
       <div class="bench-section"><h4>UDS request (read data / actuator output control)</h4>
         <div class="muted" style="margin-bottom:6px">Hex payload — e.g. <code>22F190</code> read VIN · <code>1902FF</code> read DTCs · <code>2F&lt;did&gt;03&lt;state&gt;</code> output control.</div>
         <div class="row"><input id="bUReq" value="0x7E0" style="width:90px"><input id="bURsp" value="0x7E8" style="width:90px"><input id="bUPayload" placeholder="22F190" style="flex:1"><button onclick="ui.benchUds()">Send UDS</button></div>
@@ -539,7 +546,28 @@ const ui = {
       <div class="bench-section"><h4>Send raw frame</h4>
         <div class="row"><input id="bFid" placeholder="123" style="width:90px"><input id="bFdata" placeholder="DE AD BE EF" style="flex:1"><button onclick="ui.benchSend()">Send</button></div></div>
       <div class="bench-section"><h4>Live traffic</h4><div class="frame-log" id="bFrames"><span class="muted">Connect to see frames.</span></div></div>`;
-    this.benchLoadInterfaces(); this.benchRefreshStatus();
+    this.benchLoadInterfaces(); this.benchRefreshStatus(); this.benchRestbusRefresh();
+  },
+  async benchDbcUpload() {
+    const f = el('rbFile') && el('rbFile').files[0]; if (!f) { alert('Choose a .dbc file first.'); return; }
+    aiToast.show('Loading DBC…');
+    try { const r = await api.upload('/api/can/dbc', f); this.renderRestbus(r); aiToast.done('DBC loaded: ' + r.dbc); }
+    catch (e) { aiToast.done('Error'); alert(e.message); }
+  },
+  async benchRestbusRefresh() { try { this.renderRestbus(await api.get('/api/can/restbus')); } catch {} },
+  renderRestbus(r) {
+    const st = el('rbState'), box = el('rbMsgs');
+    if (st) st.textContent = (r && r.loaded) ? `${r.dbc} · ${r.count ? 'broadcasting ' + r.count + ' frame(s)' : 'idle'}` : '';
+    if (box) box.innerHTML = (r && r.messages || []).map(m => `<div class="rb-m ${m.running ? 'on' : ''}"><span class="fid">${esc(m.id)}</span> ${esc(m.name)} <span class="muted">${m.cycle_ms ? m.cycle_ms + 'ms' : 'no cycle'}</span>${m.running ? '<span class="ok-badge yes" style="margin-left:auto">TX</span>' : ''}</div>`).join('');
+  },
+  async benchRestbusStart() { try { this.renderRestbus(await api.send('/api/can/restbus/start', 'POST', { messages: [] })); aiToast.show('Restbus broadcasting'); aiToast.hide(1400); } catch (e) { alert(e.message); } },
+  async benchRestbusStop() { try { this.renderRestbus(await api.send('/api/can/restbus/stop', 'POST')); } catch (e) { alert(e.message); } },
+  async benchReadDtcs() {
+    const out = el('bDtcOut'); out.innerHTML = '<span class="spinner"></span> reading…';
+    try { const r = await api.send('/api/can/dtcs', 'POST', { request_id: el('bDReq').value, response_id: el('bDRsp').value });
+      if (!r.ok) { out.innerHTML = `<span class="warn">${esc(r.error || 'no response')}</span>`; return; }
+      out.innerHTML = r.dtcs.length ? `<div class="dtc-list">${r.dtcs.map(d => `<span class="dtc ${d.confirmed ? 'conf' : ''}" title="status ${d.status} · ftb ${d.ftb}">${esc(d.code)}</span>`).join('')}</div>` : '<span class="ok-badge yes">No stored DTCs</span>';
+    } catch (e) { out.innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
   },
   async benchLoadInterfaces() {
     try { const list = await api.get('/api/can/interfaces'); const sel = el('bIface'); if (!sel) return;
@@ -559,7 +587,7 @@ const ui = {
     });
   },
   async benchDisconnect() { await api.send('/api/can/disconnect', 'POST'); if (state.benchTimer) { clearInterval(state.benchTimer); state.benchTimer = null; } this.benchRefreshStatus(); },
-  benchPoll() { state.benchTimer = setInterval(async () => { const log = el('bFrames'); if (!log) { clearInterval(state.benchTimer); state.benchTimer = null; return; } try { const r = await api.get('/api/can/frames?since=' + (state.benchSince || 0)); for (const f of r.frames) { state.benchSince = f.seq; log.insertAdjacentHTML('afterbegin', `<div class="fr"><span class="fid">${f.id}</span>${f.ext ? 'x' : ''} ${f.data}</div>`); } while (log.children.length > 200) log.lastChild.remove(); } catch {} }, 1000); },
+  benchPoll() { state.benchTimer = setInterval(async () => { const log = el('bFrames'); if (!log) { clearInterval(state.benchTimer); state.benchTimer = null; return; } try { const r = await api.get('/api/can/frames?since=' + (state.benchSince || 0)); for (const f of r.frames) { state.benchSince = f.seq; const dec = f.decoded ? ` <span class="fdec">${esc(f.decoded.name)}: ${esc(Object.entries(f.decoded.signals).map(([k, v]) => k + '=' + v).join(' '))}</span>` : ''; log.insertAdjacentHTML('afterbegin', `<div class="fr"><span class="fid">${f.id}</span>${f.ext ? 'x' : ''} ${f.data}${dec}</div>`); } while (log.children.length > 200) log.lastChild.remove(); } catch {} }, 1000); },
   async benchPing() {
     const out = el('bPingOut'); out.innerHTML = '<span class="spinner"></span> probing…'; aiToast.show('Pinging ECU…');
     try { const r = await api.send('/api/can/ping', 'POST', { request_id: el('bReq').value, response_id: el('bRsp').value });

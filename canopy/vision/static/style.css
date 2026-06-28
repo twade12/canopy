@@ -214,6 +214,14 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .frame-log { font-family: ui-monospace, monospace; font-size: 11.5px; max-height: 200px; overflow: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
 .frame-log .fr { white-space: nowrap; padding: 1px 0; }
 .frame-log .fr .fid { color: var(--cyan); font-weight: 700; }
+.frame-log .fr .fdec { color: var(--accent); }
+.rb-msgs { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow: auto; font-family: ui-monospace, monospace; font-size: 11.5px; }
+.rb-m { display: flex; align-items: center; gap: 7px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); }
+.rb-m.on { border-color: var(--accent); background: var(--panel-2); }
+.rb-m .fid { color: var(--cyan); font-weight: 700; }
+.dtc-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.dtc { font-family: ui-monospace, monospace; font-weight: 700; padding: 3px 9px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--border); }
+.dtc.conf { background: rgba(239,68,68,.16); color: #ef4444; border-color: #ef4444; }
 .kvp { font-size: 13px; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
 .kvp b { color: var(--text); }
 .ok-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; }

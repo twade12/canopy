@@ -103,6 +103,10 @@ class PingBody(BaseModel):
     response_id: str = "0x7E8"
 
 
+class RestbusBody(BaseModel):
+    messages: list[str] = []  # subset of DBC message names; empty = all periodic
+
+
 class ResearchBody(BaseModel):
     query: str
     synthesize: bool = True
@@ -1059,6 +1063,42 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             return bench.uds_request(req, rsp, payload)
         except Exception as e:
             raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/can/dtcs")
+    def can_dtcs(body: PingBody) -> dict:
+        try:
+            return bench.read_dtcs(_parse_id(body.request_id), _parse_id(body.response_id))
+        except Exception as e:
+            raise HTTPException(400, str(e)) from e
+
+    # --- restbus (DBC-driven vehicle emulation) --------------------------------
+    @app.post("/api/can/dbc")
+    async def can_dbc_upload(file: UploadFile) -> dict:
+        data = await file.read()
+        path = config.uploads_dir / f"dbc_{int(time.time())}_{file.filename or 'platform.dbc'}"
+        path.write_bytes(data)
+        try:
+            summary = bench.restbus.load_dbc(str(path))
+            bench.restbus.dbc_name = file.filename or bench.restbus.dbc_name
+            summary["dbc"] = bench.restbus.dbc_name
+            return summary
+        except Exception as e:
+            raise HTTPException(400, f"could not load DBC: {e}") from e
+
+    @app.get("/api/can/restbus")
+    def can_restbus_status() -> dict:
+        return bench.restbus.summary()
+
+    @app.post("/api/can/restbus/start")
+    def can_restbus_start(body: RestbusBody) -> dict:
+        try:
+            return bench.restbus_start(body.messages or None)
+        except Exception as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/can/restbus/stop")
+    def can_restbus_stop() -> dict:
+        return bench.restbus_stop()
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
