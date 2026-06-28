@@ -268,6 +268,7 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .g-step .g-title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .g-step .g-title svg { width: 16px; height: 16px; color: var(--accent); }
 .g-row { font-size: 13px; margin: 4px 0; line-height: 1.45; }
+.g-think { font-size: 12px; line-height: 1.5; color: var(--muted); white-space: pre-wrap; max-height: 220px; overflow: auto; font-family: ui-monospace, monospace; background: var(--panel-2); border-radius: 8px; padding: 9px 11px; margin-top: 4px; }
 button.ok { background: var(--accent); color: #fff; border-color: var(--accent); }
 .g-log .g-le { font-size: 12px; padding: 5px 9px; border-left: 2px solid var(--border); margin: 3px 0; color: var(--muted); white-space: pre-wrap; }
 

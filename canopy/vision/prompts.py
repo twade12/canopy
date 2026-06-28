@@ -233,7 +233,10 @@ power-up), inspect (open & visually inspect the board), board (board-level measu
 rootcause (confirm + repair + re-verify), document.
 
 You are given the module identity + pinout, relevant knowledge, the current phase, the symptom,
-and the LOG of steps already done with their results. Return ONLY JSON for the next step:
+and the LOG of steps already done with their results. FIRST write a few sentences of plain-English
+reasoning about the current state and why your chosen check is the simplest, safest, most
+informative next move (this is shown live to the technician). THEN output the step as a single
+JSON object inside a ```json code block:
 {
  "title": "short imperative step title",
  "why": "why this step now (what it rules in/out)",

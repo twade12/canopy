@@ -800,6 +800,26 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         except OllamaError as e:
             raise HTTPException(503, str(e)) from e
 
+    @app.post("/api/vehicles/{vehicle_id}/guided/next/stream")
+    def guided_next_stream(vehicle_id: int, body: GuidedNextBody) -> StreamingResponse:
+        log_msgs = store.list_messages(vehicle_id, channel="guided")
+        log = "\n".join(m["content"] for m in log_msgs)
+        context = kb.context_block(f"{body.symptom} {body.phase}") + "\n\n" \
+            + chat_context(vehicle_id, body.symptom or body.phase)
+
+        def gen():
+            try:
+                for kind, payload in extract.guided_next_stream(
+                    client, context=context, phase=body.phase, symptom=body.symptom, log=log):
+                    if kind == "think":
+                        yield f"event: token\ndata: {json.dumps(payload)}\n\n"
+                    else:  # final structured step
+                        yield f"event: done\ndata: {json.dumps(payload)}\n\n"
+            except OllamaError as e:
+                yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
     @app.post("/api/vehicles/{vehicle_id}/guided/step")
     def guided_step(vehicle_id: int, body: GuidedStepBody) -> dict:
         entry = f"[{body.phase}] {body.title} → {body.status.upper()}"

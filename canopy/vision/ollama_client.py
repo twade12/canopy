@@ -117,3 +117,36 @@ class OllamaClient:
                         break
         except urllib.error.URLError as exc:
             raise OllamaError(f"Ollama stream to {url} failed: {exc}") from exc
+
+    def chat_stream_parts(
+        self, messages: list[ChatMessage], *, temperature: float = 0.3, model: str | None = None
+    ) -> Iterator[tuple[str, str]]:
+        """Like chat_stream but yields ("think", text) for the model's reasoning and
+        ("content", text) for the answer — lets the UI surface the AI's thinking live."""
+        payload = {
+            "model": model or self.model,
+            "messages": [m.to_dict() for m in messages],
+            "stream": True,
+            "think": True,
+            "keep_alive": self.keep_alive,
+            "options": {"temperature": temperature},
+        }
+        url = f"{self.base_url}/api/chat"
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                for raw in resp:
+                    line = raw.decode("utf-8").strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    msg = obj.get("message", {})
+                    if msg.get("thinking"):
+                        yield ("think", msg["thinking"])
+                    if msg.get("content"):
+                        yield ("content", msg["content"])
+                    if obj.get("done"):
+                        break
+        except urllib.error.URLError as exc:
+            raise OllamaError(f"Ollama stream to {url} failed: {exc}") from exc

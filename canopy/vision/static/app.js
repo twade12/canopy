@@ -344,7 +344,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = '';
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = ''; state.guidedThinking = null;
     try { sessionStorage.setItem('canopy-project', id); } catch {} setTitle(); this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
@@ -814,7 +814,8 @@ const ui = {
     const ladder = phases.map((p, i) => `<div class="gp ${p.key === cur ? 'cur' : (i < curIdx ? 'done' : '')}" onclick="ui.guidedSetPhase('${p.key}')"><span class="gp-n">${i < curIdx ? svg('check') : i + 1}</span>${p.label}</div>`).join('<span class="gp-sep"></span>');
     const s = state.guidedStep;
     let stepCard;
-    if (s && s.done) stepCard = `<div class="g-step done"><div class="g-title">${svg('check')} Diagnosis concluded</div>
+    if (state.guidedThinking != null) stepCard = `<div class="g-step"><div class="g-title">${svg('guide')} Thinking through the next step…</div><div class="g-think" id="gThink">${esc(state.guidedThinking) || '<span class="spinner"></span>'}</div></div>`;
+    else if (s && s.done) stepCard = `<div class="g-step done"><div class="g-title">${svg('check')} Diagnosis concluded</div>
         <div class="g-row"><b>Root cause:</b> ${esc(s.root_cause)}</div><div class="g-row"><b>Repair &amp; re-verify:</b> ${esc(s.repair)}</div>
         <div class="row" style="margin-top:8px"><button class="primary" onclick="ui.guidedCompile()">${svg('record')} Compile wiki</button></div></div>`;
     else if (s) stepCard = `<div class="g-step"><div class="g-title">${esc(s.title)} ${s.tool && s.tool !== 'none' ? `<span class="tagchip">${esc(s.tool)}</span>` : ''}</div>
@@ -848,10 +849,17 @@ const ui = {
       state.guidedLog = await api.get(`/api/vehicles/${state.current.id}/guided/log`); aiToast.done('Symptom recorded'); rerenderView('guided'); } catch (e) { alert(e.message); }
   },
   async guidedNext() {
-    aiToast.show('Thinking through the next step…', true);
-    try { const step = await api.send(`/api/vehicles/${state.current.id}/guided/next`, 'POST', { phase: state.guidedPhase, symptom: state.guidedSymptom || (el('gSymptom') || {}).value || '' });
-      state.guidedStep = step; aiToast.done('Next step ready'); rerenderView('guided');
-    } catch (e) { aiToast.done('Error'); alert(e.message); }
+    const symptom = state.guidedSymptom || (el('gSymptom') || {}).value || '';
+    state.guidedStep = null; state.guidedThinking = '';  // show the live "thinking" panel
+    aiToast.show('Thinking through the next step…', true); rerenderView('guided');
+    await this.stream(`/api/vehicles/${state.current.id}/guided/next/stream`, { phase: state.guidedPhase, symptom },
+      tok => { state.guidedThinking += tok; aiToast.append(tok);
+        const e = el('gThink'); if (e) { e.textContent = state.guidedThinking.slice(-1600); e.scrollTop = e.scrollHeight; } },
+      data => { state.guidedThinking = null;
+        if (data && data.title !== undefined) { state.guidedStep = data; aiToast.done('Next step ready'); }
+        else aiToast.done('Done');
+        rerenderView('guided'); },
+      e => { state.guidedThinking = null; aiToast.done('Error'); rerenderView('guided'); alert(e); });
   },
   async guidedRecord(status) {
     const s = state.guidedStep; if (!s) return; const result = (el('gResult') || {}).value || '';

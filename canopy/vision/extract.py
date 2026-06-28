@@ -91,13 +91,27 @@ def identify_component(client: OllamaClient, label: str, part: str = "", context
     return {"function": str(data.get("function", "")), "check": str(data.get("check", ""))}
 
 
-def guided_next(client: OllamaClient, *, context: str, phase: str, symptom: str, log: str) -> dict:
-    """Recommend the single next guided-repair step as structured JSON (see GUIDED_SYSTEM)."""
-    user = (f"CURRENT PHASE: {phase}\nSYMPTOM: {symptom or '(not stated yet)'}\n\n"
+def _guided_user(phase: str, symptom: str, log: str) -> str:
+    return (f"CURRENT PHASE: {phase}\nSYMPTOM: {symptom or '(not stated yet)'}\n\n"
             f"STEPS DONE SO FAR (with results):\n{log or '(none yet)'}\n\n"
-            f"MODULE + KNOWLEDGE:\n{context}\n\nGive the next step as JSON.")
-    messages = [ChatMessage("system", GUIDED_SYSTEM), ChatMessage("user", user)]
-    data = parse_json_object(client.chat(messages, temperature=0.2))
+            "Reason briefly about the state and the simplest safe next check, then give the step "
+            "as a single JSON object in a ```json block.")
+
+
+def _visible_reasoning(full: str) -> str:
+    """The plain-English reasoning portion of a streamed guided answer (everything before the
+    JSON block) — what we show the technician live."""
+    s = full.lstrip()
+    if s.startswith("{") or s.startswith("```"):
+        return ""
+    cut = full.find("```")
+    if cut == -1:
+        nl = full.find("\n{")
+        cut = nl if nl != -1 else len(full)
+    return full[:cut]
+
+
+def _norm_step(data: dict, phase: str) -> dict:
     return {
         "title": str(data.get("title", "")),
         "why": str(data.get("why", "")),
@@ -112,6 +126,28 @@ def guided_next(client: OllamaClient, *, context: str, phase: str, symptom: str,
         "root_cause": str(data.get("root_cause", "")),
         "repair": str(data.get("repair", "")),
     }
+
+
+def guided_next(client: OllamaClient, *, context: str, phase: str, symptom: str, log: str) -> dict:
+    """Recommend the single next guided-repair step as structured JSON (see GUIDED_SYSTEM)."""
+    user = f"{_guided_user(phase, symptom, log)}\n\nMODULE + KNOWLEDGE:\n{context}"
+    messages = [ChatMessage("system", GUIDED_SYSTEM), ChatMessage("user", user)]
+    return _norm_step(parse_json_object(client.chat(messages, temperature=0.2)), phase)
+
+
+def guided_next_stream(client: OllamaClient, *, context: str, phase: str, symptom: str, log: str):
+    """Yield ("think", text) chunks of the model's reasoning as it works, then ("step", dict)
+    with the parsed next step — so the UI can show the AI thinking through the walkthrough."""
+    user = f"{_guided_user(phase, symptom, log)}\n\nMODULE + KNOWLEDGE:\n{context}"
+    messages = [ChatMessage("system", GUIDED_SYSTEM), ChatMessage("user", user)]
+    full, shown = "", 0
+    for chunk in client.chat_stream(messages, temperature=0.2):
+        full += chunk
+        vis = _visible_reasoning(full)
+        if len(vis) > shown:
+            yield ("think", vis[shown:])
+            shown = len(vis)
+    yield ("step", _norm_step(parse_json_object(full), phase))
 
 
 def assistant_stream(client: OllamaClient, question: str, *, context: str, history: list):
