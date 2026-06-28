@@ -79,6 +79,13 @@ CREATE TABLE IF NOT EXISTS measurement (
     kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
     attachment_id INTEGER, note TEXT, created_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE IF NOT EXISTS product (
+    id SERIAL PRIMARY KEY,
+    sku TEXT UNIQUE, part_number TEXT, make TEXT, model TEXT, year TEXT,
+    module_class TEXT, label TEXT, profile_yaml TEXT, wiki TEXT, bom TEXT,
+    symptoms TEXT, units INTEGER DEFAULT 1, source_vehicle_id INTEGER,
+    created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_diagram_vehicle ON diagram(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_pinout_vehicle ON pinout(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_memory_vehicle ON memory(vehicle_id);
@@ -321,6 +328,54 @@ class PgStore:
 
     def get_attachment(self, attachment_id: int) -> dict | None:
         return self._one("SELECT * FROM attachment WHERE id = %s", (attachment_id,))
+
+    # --- product library ---
+    _PRODUCT_COLS = ("sku", "part_number", "make", "model", "year", "module_class", "label",
+                     "profile_yaml", "wiki", "bom", "symptoms", "source_vehicle_id")
+
+    def get_product_by_sku(self, sku: str) -> dict | None:
+        return self._one("SELECT * FROM product WHERE sku = %s", (sku,))
+
+    def upsert_product(self, **f) -> dict:
+        existing = self.get_product_by_sku(f.get("sku", ""))
+        if existing:
+            cols = [c for c in self._PRODUCT_COLS if c in f]
+            sets = ", ".join(f"{c} = %s" for c in cols)
+            return self._one(
+                f"UPDATE product SET {sets}, units = units + 1, updated_at = %s"
+                " WHERE id = %s RETURNING *",
+                (*[f[c] for c in cols], _now(), existing["id"]))
+        cols = list(self._PRODUCT_COLS)
+        ph = ", ".join(["%s"] * len(cols))
+        return self._one(
+            f"INSERT INTO product ({', '.join(cols)}, units, created_at, updated_at)"
+            f" VALUES ({ph}, 1, %s, %s) RETURNING *",
+            (*[f.get(c) for c in cols], _now(), _now()))
+
+    def get_product(self, product_id: int) -> dict | None:
+        return self._one("SELECT * FROM product WHERE id = %s", (product_id,))
+
+    def list_products(self) -> list[dict]:
+        return self._all(
+            "SELECT id, sku, part_number, make, model, year, module_class, label, units,"
+            " updated_at FROM product ORDER BY updated_at DESC")
+
+    def match_product(self, *, sku: str = "", make: str = "", model: str = "",
+                      year: str = "") -> dict | None:
+        if sku:
+            m = self.get_product_by_sku(sku)
+            if m:
+                return m
+        if make and model:
+            return self._one(
+                "SELECT * FROM product WHERE lower(make)=lower(%s) AND lower(model)=lower(%s)"
+                " AND (year=%s OR %s='') ORDER BY units DESC LIMIT 1",
+                (make, model, year, year))
+        return None
+
+    def delete_product(self, product_id: int) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM product WHERE id = %s", (product_id,))
 
     # --- recorded measurements ---
     def add_measurement(self, vehicle_id: int, **f) -> dict:

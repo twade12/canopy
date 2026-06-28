@@ -19,6 +19,7 @@ from canopy.vision.prompts import (
     EXTRACT_SYSTEM,
     GUIDED_SYSTEM,
     IDENTIFY_SYSTEM,
+    LISTING_SYSTEM,
     MEMORY_SUGGEST_SYSTEM,
     PCB_SYSTEM,
     REPORT_SYSTEM,
@@ -148,6 +149,16 @@ def guided_next_stream(client: OllamaClient, *, context: str, phase: str, sympto
             yield ("think", vis[shown:])
             shown = len(vis)
     yield ("step", _norm_step(parse_json_object(full), phase))
+
+
+def product_listing(client: OllamaClient, *, identity: str, symptoms: str, scope: str) -> str:
+    """Generate a publish-ready remanufactured-module listing (Markdown) for a product."""
+    scope_txt = scope or "(general board-level repair)"
+    user = (f"MODULE IDENTITY:\n{identity}\n\n"
+            f"SYMPTOMS THIS REPAIR FIXES:\n{symptoms or '(none recorded yet)'}\n\n"
+            f"REPAIR SCOPE / NOTES:\n{scope_txt}\n\nWrite the listing.")
+    messages = [ChatMessage("system", LISTING_SYSTEM), ChatMessage("user", user)]
+    return client.chat(messages, temperature=0.3)
 
 
 def assistant_stream(client: OllamaClient, question: str, *, context: str, history: list):

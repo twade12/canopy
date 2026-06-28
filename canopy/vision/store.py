@@ -96,6 +96,13 @@ CREATE TABLE IF NOT EXISTS measurement (
     kind TEXT, label TEXT, mode TEXT, value REAL, unit TEXT, data TEXT,
     attachment_id INTEGER, note TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS product (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sku TEXT UNIQUE, part_number TEXT, make TEXT, model TEXT, year TEXT,
+    module_class TEXT, label TEXT, profile_yaml TEXT, wiki TEXT, bom TEXT,
+    symptoms TEXT, units INTEGER DEFAULT 1, source_vehicle_id INTEGER,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_diagram_vehicle ON diagram(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_pinout_vehicle ON pinout(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_memory_vehicle ON memory(vehicle_id);
@@ -381,6 +388,61 @@ class Store:
             "SELECT * FROM attachment WHERE vehicle_id = ? ORDER BY id DESC", (vehicle_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # --- product library (reusable SKU: profile + wiki + BOM + cases) ---
+    _PRODUCT_COLS = ("sku", "part_number", "make", "model", "year", "module_class", "label",
+                     "profile_yaml", "wiki", "bom", "symptoms", "source_vehicle_id")
+
+    def get_product_by_sku(self, sku: str) -> dict | None:
+        row = self._conn.execute("SELECT * FROM product WHERE sku = ?", (sku,)).fetchone()
+        return dict(row) if row else None
+
+    def upsert_product(self, **f) -> dict:
+        """Create or update a product keyed by sku; bumps units on each (re)promote."""
+        existing = self.get_product_by_sku(f.get("sku", ""))
+        if existing:
+            cols = [c for c in self._PRODUCT_COLS if c in f]
+            sets = ", ".join(f"{c} = ?" for c in cols)
+            self._conn.execute(
+                f"UPDATE product SET {sets}, units = units + 1, updated_at = ? WHERE id = ?",
+                (*[f[c] for c in cols], _now(), existing["id"]))
+            self._conn.commit()
+            return self.get_product(existing["id"])
+        cols = list(self._PRODUCT_COLS)
+        self._conn.execute(
+            f"INSERT INTO product ({', '.join(cols)}, units, created_at, updated_at)"
+            f" VALUES ({', '.join('?' for _ in cols)}, 1, ?, ?)",
+            (*[f.get(c) for c in cols], _now(), _now()))
+        self._conn.commit()
+        return self.get_product_by_sku(f.get("sku", ""))
+
+    def get_product(self, product_id: int) -> dict | None:
+        row = self._conn.execute("SELECT * FROM product WHERE id = ?", (product_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_products(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT id, sku, part_number, make, model, year, module_class, label, units,"
+            " updated_at FROM product ORDER BY updated_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+    def match_product(self, *, sku: str = "", make: str = "", model: str = "",
+                      year: str = "") -> dict | None:
+        if sku:
+            m = self.get_product_by_sku(sku)
+            if m:
+                return m
+        if make and model:
+            row = self._conn.execute(
+                "SELECT * FROM product WHERE lower(make)=lower(?) AND lower(model)=lower(?)"
+                " AND (year=? OR ?='') ORDER BY units DESC LIMIT 1",
+                (make, model, year, year)).fetchone()
+            return dict(row) if row else None
+        return None
+
+    def delete_product(self, product_id: int) -> None:
+        self._conn.execute("DELETE FROM product WHERE id = ?", (product_id,))
+        self._conn.commit()
 
     # --- recorded measurements (DMM readings / scope captures for the wiki) ---
     def add_measurement(self, vehicle_id: int, **f) -> dict:

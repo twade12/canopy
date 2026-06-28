@@ -470,3 +470,17 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .meas-row svg { width: 13px; height: 13px; color: var(--accent); flex: none; }
 .meas-row .meas-v { font-family: ui-monospace, monospace; color: var(--accent); }
 .meas-row .iconbtn { margin-left: auto; width: 22px; height: 22px; }
+
+/* product library */
+.prod-banner { background: var(--accent-soft); border: 1px solid var(--accent); color: var(--text);
+  border-radius: 9px; padding: 8px 12px; margin-bottom: 12px; font-size: 12.5px; display: flex; align-items: center; gap: 7px; }
+.prod-banner svg { width: 15px; height: 15px; color: var(--accent); }
+.prod-banner a { color: var(--accent); font-weight: 600; }
+.prod-col { padding: 14px; height: 100%; overflow: auto; }
+.prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.prod-card { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--panel); transition: transform .14s var(--spring), box-shadow .16s, border-color .16s; }
+.prod-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 6px 18px rgba(20,50,38,.1); }
+.prod-card .pc-title { font-weight: 700; font-size: 14px; }
+.prod-card .pc-sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+.prod-card .pc-units { font-size: 12px; margin-top: 8px; color: var(--muted); }
+.units-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 700; font-size: 11px; }

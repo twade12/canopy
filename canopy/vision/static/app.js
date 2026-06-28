@@ -22,6 +22,7 @@ const ICON = {
   check: '<path d="M5 12l4 4L19 6"/>',
   cab: '<path d="M3 4h18v16H3z"/><path d="M7 4v16M11 4v16M15 4v16M19 4v16"/>',
   gauge: '<path d="M4 19a8 8 0 1116 0"/><path d="M12 19l5-5"/>', scope: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M5 13h2l2-4 2 7 2-5h4"/>', siggen: '<path d="M3 12c3-7 5-7 7 0s4 7 7 0"/>',
+  catalog: '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -39,11 +40,11 @@ const VIEWS = [
   { key: 'profile', label: 'Profile', icon: 'cab' }, { key: 'wiki', label: 'Wiki', icon: 'record' },
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
-  { key: 'knowledge', label: 'Knowledge', icon: 'book' },
+  { key: 'knowledge', label: 'Knowledge', icon: 'book' }, { key: 'products', label: 'Products', icon: 'catalog' },
   { key: 'dmm', label: 'DMM', icon: 'gauge' }, { key: 'scope', label: 'Scope', icon: 'scope' },
   { key: 'siggen', label: 'Signal Gen', icon: 'siggen' },
 ];
-const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research', 'knowledge', 'dmm', 'scope', 'siggen']);  // usable without a project
+const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research', 'knowledge', 'products', 'dmm', 'scope', 'siggen']);  // usable without a project
 const GUIDED_PHASES = [
   { key: 'intake', label: 'Intake' }, { key: 'sealed', label: 'Sealed checks' },
   { key: 'powerup', label: 'Power-up' }, { key: 'inspect', label: 'Open & inspect' },
@@ -343,7 +344,7 @@ const anno = {
 function viewIn(c) { c.classList.remove('view-in'); void c.offsetWidth; c.classList.add('view-in'); }
 function renderViewInto(view, c) {
   if (!c) return;
-  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge, dmm: ui.viewDmm, scope: ui.viewScope, siggen: ui.viewSiggen };
+  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge, products: ui.viewProducts, dmm: ui.viewDmm, scope: ui.viewScope, siggen: ui.viewSiggen };
   if (globals[view]) { globals[view].call(ui, c); viewIn(c); return; }
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; viewIn(c); return; }
   ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki, guided: ui.viewGuided, profile: ui.viewProfile })[view].call(ui, c);
@@ -358,6 +359,7 @@ const ui = {
     el('resetBtn').innerHTML = svg('reset'); el('apiBtn').innerHTML = svg('api'); el('newRecBtn').innerHTML = svg('plus'); el('searchIcon').innerHTML = svg('search');
     el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search'); el('logoutBtn').innerHTML = svg('logout');
     const kbtn = el('knowledgeBtn'); if (kbtn) kbtn.innerHTML = svg('book');
+    const pbtn = el('productsBtn'); if (pbtn) pbtn.innerHTML = svg('catalog');
     ['dmm:gauge', 'scope:scope', 'siggen:siggen'].forEach(p => { const [id, ic] = p.split(':'); const b = el(id + 'Btn'); if (b) b.innerHTML = svg(ic); });
     api.get('/api/auth/status').then(s => { if (s.auth) el('logoutBtn').classList.remove('hidden'); }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
@@ -458,13 +460,61 @@ const ui = {
 
   // ---------- record + tags ----------
   viewRecord(c) { const v = state.current;
-    c.innerHTML = `<h3 class="sec">Project details</h3>
+    c.innerHTML = `<div id="productBanner"></div><h3 class="sec">Project details</h3>
       <label class="field"><span>Label</span><input id="f_label" value="${esc(v.label || '')}" placeholder="e.g. 2016 F-250 PCM"></label>
       <div class="row"><label class="field" style="flex:2"><span>VIN</span><input id="f_vin" value="${esc(v.vin || '')}"></label><label class="field"><span>Year</span><input id="f_year" value="${esc(v.year || '')}"></label></div>
       <div class="row"><label class="field" style="flex:1"><span>Make</span><input id="f_make" value="${esc(v.make || '')}"></label><label class="field" style="flex:1"><span>Model</span><input id="f_model" value="${esc(v.model || '')}"></label></div>
-      <div class="row" style="margin-bottom:14px"><button class="primary" onclick="ui.saveVehicle()">Save</button><button onclick="ui.identify()">Identify from diagram</button><button class="ghost danger" onclick="ui.deleteVehicle()">Delete</button></div>
+      <div class="row" style="margin-bottom:14px"><button class="primary" onclick="ui.saveVehicle()">Save</button><button onclick="ui.identify()">Identify from diagram</button><button onclick="ui.promoteProduct()">${svg('catalog')} Promote to Product</button><button class="ghost danger" onclick="ui.deleteVehicle()">Delete</button></div>`;
+    this.loadProductMatch();
+    c.innerHTML += `
       <h3 class="sec">Tags</h3><div class="tags" style="margin-bottom:10px">${(v.tags || []).map(t => `<span class="tagchip rm" onclick="ui.removeTag('${esc(t).replace(/'/g, "")}')">${esc(t)} ✕</span>`).join('') || '<span class="muted">No tags.</span>'}</div>
       <div class="chat-input"><input id="tagIn" placeholder="Add a tag (e.g. Duramax)" onkeydown="if(event.key==='Enter')ui.addTag()"><button onclick="ui.addTag()">${svg('tag')} Add</button><button onclick="ui.extractTags()" id="tagAiBtn">${svg('bolt')} AI tags</button></div>`; },
+
+  // ---------- product library (reusable SKUs: profile + wiki + BOM + cases) ----------
+  async loadProductMatch() {
+    const b = el('productBanner'); if (!b || !state.current) return;
+    try { const r = await api.get(`/api/vehicles/${state.current.id}/product-match`); const m = r.match;
+      b.innerHTML = m ? `<div class="prod-banner">${svg('catalog')} Known product — <b>${esc([m.year, m.make, m.model, m.module_class].filter(Boolean).join(' '))}</b> · ${m.units} unit(s) serviced · <a href="#" onclick="ui.openProduct(${m.id});return false">open in Products</a></div>` : '';
+    } catch { b.innerHTML = ''; }
+  },
+  async promoteProduct() {
+    if (!state.current) return; aiToast.show('Promoting to Product library…');
+    try { const p = await api.send(`/api/vehicles/${state.current.id}/promote`, 'POST');
+      state.products = null; aiToast.done(`Product saved — ${p.units} unit(s) serviced`); this.loadProductMatch();
+    } catch (e) { aiToast.done('Error'); alert(e.message); }
+  },
+  viewProducts(c) {
+    if (state.products == null) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.loadProducts(); return; }
+    c.innerHTML = `<div class="prod-col"><div class="row" style="margin-bottom:10px;align-items:center"><h3 class="sec" style="margin:0">Product library</h3><span class="muted" style="margin-left:auto;font-size:11px">${state.products.length} product(s) — the SKUs you service</span></div>
+      ${state.products.length ? `<div class="prod-grid">${state.products.map(p => `<div class="prod-card"><div class="pc-title">${esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || 'Module')}</div>
+        <div class="pc-sub">${esc(p.module_class || '')}${p.part_number ? ' · ' + esc(p.part_number) : ''}</div>
+        <div class="pc-units"><span class="units-badge">${p.units}</span> unit(s) serviced</div>
+        <div class="row" style="margin-top:auto;padding-top:8px"><button onclick="ui.openProduct(${p.id})">Open</button><button class="primary" style="flex:1" onclick="ui.productListing(${p.id})">${svg('record')} Listing</button><button class="iconbtn danger" title="Remove" onclick="ui.deleteProduct(${p.id})">${svg('trash')}</button></div></div>`).join('')}</div>`
+        : '<div class="empty">No products yet. Open a project, confirm its <b>Profile</b> and <b>Wiki</b>, then click <b>Promote to Product</b> on its Record tab. The first unit of a module mints a reusable product; later units match it instantly.</div>'}</div>`;
+  },
+  async loadProducts() { try { state.products = await api.get('/api/products'); } catch { state.products = []; } rerenderView('products'); },
+  async openProduct(id) {
+    try { const p = await api.get('/api/product/' + id);
+      const m = document.createElement('div'); m.className = 'modal'; m.style.width = 'min(820px,95vw)';
+      m.innerHTML = `<div class="m-head">${svg('catalog')} ${esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || 'Product')}</div>
+        <div class="m-sub">${esc(p.module_class || '')}${p.part_number ? ' · P/N ' + esc(p.part_number) : ''} · ${p.units} unit(s) serviced</div>
+        <div class="m-body md" style="max-height:64vh;overflow:auto">${md(p.wiki || '_No wiki captured for this product yet._')}</div>
+        <div class="m-foot"><button class="primary" onclick="ui.productListing(${p.id})">${svg('record')} Generate listing</button><button onclick="closeModal()">Close</button></div>`;
+      showModal(m);
+    } catch (e) { alert(e.message); }
+  },
+  async productListing(id) {
+    aiToast.show('Writing product listing…', true);
+    try { const r = await api.send('/api/product/' + id + '/listing', 'POST'); state.lastListing = r.listing; aiToast.done('Listing ready');
+      const m = document.createElement('div'); m.className = 'modal'; m.style.width = 'min(760px,94vw)';
+      m.innerHTML = `<div class="m-head">${svg('record')} Product listing</div><div class="m-body md" style="max-height:68vh;overflow:auto">${md(r.listing)}</div><div class="m-foot"><button onclick="ui.copyListing()">Copy Markdown</button><button class="primary" onclick="closeModal()">Close</button></div>`;
+      showModal(m);
+    } catch (e) { aiToast.done('Error'); alert(e.message); }
+  },
+  copyListing() { if (state.lastListing) navigator.clipboard?.writeText(state.lastListing); aiToast.show('Copied'); aiToast.hide(1200); },
+  async deleteProduct(id) { if (!confirm('Remove this product from the library?')) return;
+    try { await api.send('/api/product/' + id, 'DELETE'); state.products = (state.products || []).filter(p => p.id !== id); rerenderView('products'); } catch (e) { alert(e.message); }
+  },
 
   // ---------- api docs ----------
   async viewApi(c) { if (!state.apiRef) { c.innerHTML = '<p class="muted">Loading API reference…</p>'; try { state.apiRef = await api.get('/api/reference'); } catch { c.innerHTML = '<p class="warn">Could not load reference.</p>'; return; } }

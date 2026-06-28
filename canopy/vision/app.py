@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from canopy.hal.instruments import InstrumentHub
 from canopy.profiles import generate as profile_generate
 from canopy.profiles.schema import ModuleProfile
-from canopy.vision import auth, extract
+from canopy.vision import auth, extract, productlib
 from canopy.vision import bench as benchmod
 from canopy.vision import diagram as dg
 from canopy.vision import knowledge as kb
@@ -832,6 +832,63 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def pcb_component_delete(comp_id: int) -> dict:
         store.delete_pcb_component(comp_id)
         return {"ok": True}
+
+    # --- product library (turn a project into a reusable, listable SKU) --------
+    @app.get("/api/products")
+    def products_list() -> list[dict]:
+        return store.list_products()
+
+    @app.get("/api/product/{product_id}")
+    def product_get(product_id: int) -> dict:
+        p = store.get_product(product_id)
+        if not p:
+            raise HTTPException(404, "no such product")
+        return productlib.hydrate(p)
+
+    @app.delete("/api/product/{product_id}")
+    def product_delete(product_id: int) -> dict:
+        store.delete_product(product_id)
+        return {"ok": True}
+
+    @app.post("/api/vehicles/{vehicle_id}/promote")
+    def promote_to_product(vehicle_id: int) -> dict:
+        fields = productlib.build_product_fields(store, vehicle_id)
+        return productlib.hydrate(store.upsert_product(**fields))
+
+    @app.get("/api/vehicles/{vehicle_id}/product-match")
+    def product_match(vehicle_id: int) -> dict:
+        v = store.get_vehicle(vehicle_id)
+        prof = store.get_profile(vehicle_id) or ""
+        pn = ""
+        if prof:
+            try:
+                pn = ModuleProfile.from_yaml(prof).identity.part_number
+            except Exception:
+                pass
+        m = store.match_product(sku=pn, make=v.get("make", ""), model=v.get("model", ""),
+                                year=v.get("year", ""))
+        # don't match a project to the product it created
+        if m and m.get("source_vehicle_id") == vehicle_id:
+            m = None
+        return {"match": productlib.hydrate(m) if m else None}
+
+    @app.post("/api/product/{product_id}/listing")
+    def product_listing(product_id: int) -> dict:
+        p = store.get_product(product_id)
+        if not p:
+            raise HTTPException(404, "no such product")
+        ph = productlib.hydrate(p)
+        identity = " ".join(filter(None, [ph.get("year"), ph.get("make"), ph.get("model"),
+                            ph.get("module_class"), f"(P/N {ph['part_number']})"
+                            if ph.get("part_number") else ""]))
+        symptoms = "\n".join(f"- {s}" for s in (ph.get("symptoms") or []))
+        scope = "\n".join(f"- {b.get('ref')} {b.get('part', '')}".strip()
+                          for b in (ph.get("bom") or []))
+        try:
+            md = extract.product_listing(client, identity=identity, symptoms=symptoms, scope=scope)
+        except OllamaError as e:
+            raise HTTPException(503, str(e)) from e
+        return {"listing": md}
 
     # --- module profile (CAB contract: diagram/PCB -> confirmed profile) -------
     def _profile_payload(yaml_text: str, saved: bool) -> dict:

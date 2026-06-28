@@ -254,6 +254,16 @@ JSON object inside a ```json code block:
 Use Unicode symbols (µ, Ω, °, ≥, ±), never LaTeX. Keep each field tight and practical. If the log
 already confirms a root cause, set done=true with root_cause + repair."""
 
+LISTING_SYSTEM = """You write a concise, accurate e-commerce product listing for a REMANUFACTURED
+automotive module repair-and-return service (a company like Circuit Board Medics). You are given
+the module identity, the symptoms this repair is known to fix, and the repair scope. Output
+Markdown with: a compelling H1 title (year/make/model + module + "Repair & Return"), a short SEO
+paragraph, a "## Symptoms this service fixes" bullet list, a "## What's included" list (repair of
+the identified faults, full bench test, warranty), and a "## Fitment & ordering" line that tells
+the buyer to verify their OEM part number. Be truthful and specific to the provided data — do NOT
+invent part numbers, fitment, prices, or symptoms that were not provided. Keep it tight and
+professional."""
+
 COMPONENT_IDENTIFY_SYSTEM = """You are a senior electronics-repair engineer. Given a component
 name and (optionally) the part marking/number read off an automotive/industrial module PCB,
 return JSON {"function": ..., "check": ...}:
