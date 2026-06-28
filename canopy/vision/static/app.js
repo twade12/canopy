@@ -116,9 +116,8 @@ function md(t) {
     if (/^\s*[-*]\s+/.test(ln)) { if (list !== 'ul') { close(); out += '<ul>'; list = 'ul'; } out += '<li>' + ln.replace(/^\s*[-*]\s+/, '') + '</li>'; continue; }
     if (/^\s*\d+\.\s+/.test(ln)) { if (list !== 'ol') { close(); out += '<ol>'; list = 'ol'; } out += '<li>' + ln.replace(/^\s*\d+\.\s+/, '') + '</li>'; continue; }
     close();
-    if (/^###\s+/.test(ln)) out += '<h3>' + ln.replace(/^###\s+/, '') + '</h3>';
-    else if (/^##\s+/.test(ln)) out += '<h2>' + ln.replace(/^##\s+/, '') + '</h2>';
-    else if (/^#\s+/.test(ln)) out += '<h1>' + ln.replace(/^#\s+/, '') + '</h1>';
+    const hm = ln.match(/^\s*(#{1,6})\s+(.*)$/);  // ATX headers h1-h6 (#### was dropped before)
+    if (hm) { const lvl = hm[1].length; out += `<h${lvl}>${hm[2].replace(/\s+#+\s*$/, '')}</h${lvl}>`; }
     else if (ln.trim()) out += '<p>' + ln + '</p>';
   }
   flushTbl(); close();
@@ -513,13 +512,15 @@ const ui = {
   renderWizard() {
     const ov = el('wizard'); if (!ov) return; const w = state.wizard;
     const STEPS = [
-      { key: 'identify', title: 'Identify the module', skip: false, assist: "Snap the label or type the make / model / year — I'll check whether we've serviced this module before." },
-      { key: 'diagram', title: 'Wiring diagram', skip: true, assist: "Drop the wiring diagram (image or PDF) and I'll read the connector pinout automatically. No diagram yet? Skip it." },
-      { key: 'pcb', title: 'Board photo', skip: true, assist: 'Photograph the top of the board — I box and identify the components and flag the usual failure points.' },
-      { key: 'symptom', title: 'Customer symptom', skip: true, assist: "What's the complaint? It focuses the triage and goes straight into the repair record." },
-      { key: 'review', title: 'Review & open', skip: false, assist: 'Everything is collected. Open the workspace to triage, build the CAB profile, and generate the wiki — every tab is now populated.' },
+      { key: 'identify', title: 'Identify the module', skip: false },
+      { key: 'diagram', title: 'Wiring diagram', skip: true },
+      { key: 'pcb', title: 'Board photo', skip: true },
+      { key: 'symptom', title: 'Customer symptom', skip: true },
+      { key: 'review', title: 'Review & open', skip: false },
     ];
     const s = STEPS[w.step]; let body = '';
+    if (w.busy) body = `<div class="wiz-busy"><span class="spinner big"></span><div>${esc(w.busy)}</div></div>`;
+    else
     if (s.key === 'identify') body = `<div class="wiz-grid">
         <label class="field"><span>Label</span><input id="wizLabel" value="${esc(w.identity.label)}" placeholder="e.g. 2016 F-250 PCM"></label>
         <div class="row"><label class="field" style="flex:1"><span>Year</span><input id="wizYear" value="${esc(w.identity.year)}"></label><label class="field" style="flex:2"><span>Make</span><input id="wizMake" value="${esc(w.identity.make)}"></label><label class="field" style="flex:2"><span>Model</span><input id="wizModel" value="${esc(w.identity.model)}"></label></div>
@@ -541,9 +542,19 @@ const ui = {
       <div class="wiz-stepper">${STEPS.map((x, i) => `<div class="wiz-pip ${i === w.step ? 'cur' : (i < w.step ? 'done' : '')}"><span>${i < w.step ? svg('check') : i + 1}</span>${x.title.split(' ')[0]}</div>`).join('')}</div>
       <h2 class="wiz-title">${s.title}</h2>
       <div class="wiz-body">${body}</div>
-      <div class="wiz-assist">${svg('assistant')}<span>${s.assist}</span></div>
-      <div class="wiz-nav"><button onclick="ui.wizardBack()" ${w.step === 0 ? 'disabled' : ''}>Back</button><div class="spacer"></div>${s.skip ? '<button class="ghost" onclick="ui.wizardNext(true)">Skip</button>' : ''}<button class="primary" onclick="ui.wizardNext()">${w.step === STEPS.length - 1 ? 'Open workspace' : 'Next'}</button></div>
+      <div class="wiz-assist">${svg('assistant')}<span><b>Sage</b> · ${this.wizAssist(s.key)}</span></div>
+      <div class="wiz-nav"><button onclick="ui.wizardBack()" ${w.step === 0 || w.busy ? 'disabled' : ''}>Back</button><div class="spacer"></div>${s.skip ? `<button class="ghost" onclick="ui.wizardNext(true)" ${w.busy ? 'disabled' : ''}>Skip</button>` : ''}<button class="primary" onclick="ui.wizardNext()" ${w.busy ? 'disabled' : ''}>${w.step === STEPS.length - 1 ? 'Open workspace' : 'Next'}</button></div>
     </div>`;
+  },
+  wizAssist(key) {  // Sage's live, data-aware prompts
+    const w = state.wizard;
+    if (key === 'identify') return w.match ? `I've serviced this one before — <b>${esc([w.match.year, w.match.make, w.match.model].filter(Boolean).join(' '))}</b>, ${w.match.units} unit(s). I'll reuse the saved CAB profile &amp; wiki, so this'll be quick.` : "Snap the label or type the make / model / year — I'll check whether we've serviced this module before.";
+    if (key === 'diagram') { if (w.summary) { const s = w.summary; const bits = [s.can && 'a CAN bus', s.power && 'power', s.ground && 'ground'].filter(Boolean);
+      return `Read <b>${s.pins} pins</b>${bits.length ? ' — I can see ' + bits.join(', ') : ''}.${w.tags && w.tags.length ? ` Tagged it: ${w.tags.slice(0, 6).map(esc).join(', ')}.` : ''} Next, photograph the board.`; }
+      return "Drop the wiring diagram (image or PDF) — I'll read the connector pinout and tag the module automatically. No diagram yet? Skip it."; }
+    if (key === 'pcb') return w.components ? `Boxed <b>${w.components} components</b> — I'll flag the usual failure points when we triage; you can correct any of them later.` : "Photograph the top of the board and I'll identify the components and read their part markings.";
+    if (key === 'symptom') return "What's the customer's complaint? Even a short note focuses the triage and goes into the repair record.";
+    return `Everything's collected${w.summary ? ` — ${w.summary.pins} pins` : ''}${w.components ? `, ${w.components} components` : ''}${w.tags && w.tags.length ? ', tags' : ''} and your symptom. Open the workspace and we'll triage and build the wiki.`;
   },
   wizardBack() { if (state.wizard.step > 0) { state.wizard.step--; this.renderWizard(); } },
   async wizardNext(skip) {
@@ -563,19 +574,31 @@ const ui = {
     w.step++; this.renderWizard();
   },
   wizDiagramPick() { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,application/pdf';
-    inp.onchange = async e => { const f = e.target.files[0]; if (!f) return; aiToast.show('Uploading diagram…');
-      try { await api.upload(`/api/vehicles/${state.wizard.vid}/diagram`, f); state.wizard.diagram = true; aiToast.done('Diagram added'); this.renderWizard(); } catch (er) { aiToast.done('Error'); alert(er.message); } };
+    inp.onchange = async e => { const f = e.target.files[0]; if (!f) return; const w = state.wizard;
+      w.busy = 'Uploading the wiring diagram…'; this.renderWizard();
+      try { await api.upload(`/api/vehicles/${w.vid}/diagram`, f); w.diagram = true; w.busy = null; this.renderWizard(); this.wizExtract(); }
+      catch (er) { w.busy = null; this.renderWizard(); alert(er.message); } };
     inp.click();
   },
-  async wizExtract() { aiToast.show('Reading the pinout…', true);
-    try { const r = await api.send(`/api/vehicles/${state.wizard.vid}/extract`, 'POST', { all_pages: true }); state.wizard.pinouts = (r.pinouts || []).length; aiToast.done(`${state.wizard.pinouts} pins`); this.renderWizard(); }
-    catch (e) { aiToast.done('Error'); alert(e.message); }
+  async wizExtract() { const w = state.wizard;
+    w.busy = 'Reading the connector pinout…'; this.renderWizard();
+    try {
+      const r = await api.send(`/api/vehicles/${w.vid}/extract`, 'POST', { all_pages: true });
+      const pins = r.pinouts || []; w.pinouts = pins.length;
+      const txt = pins.map(p => `${p.signal || ''} ${p.function || ''}`).join(' ').toLowerCase();
+      w.summary = { pins: pins.length, can: /\bcan\b|can[\s_-]?h|can[\s_-]?l/.test(txt),
+        power: /b\+|kl30|kl15|vbat|batt|\bpower\b|\bign/.test(txt), ground: /gnd|ground|return/.test(txt) };
+      w.busy = 'Pulling useful tags from the diagram…'; this.renderWizard();
+      try { const t = await api.send(`/api/vehicles/${w.vid}/extract-tags`, 'POST', { all_pages: true }); w.tags = t.tags || []; } catch {}
+    } catch (e) { alert(e.message); }
+    w.busy = null; this.renderWizard();
   },
   wizPcbPick() { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
     inp.onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader();
-      r.onload = async () => { state.wizard.pcbImage = r.result; aiToast.show('Analyzing board…', true);
-        try { const res = await api.send(`/api/vehicles/${state.wizard.vid}/pcb`, 'POST', { image: r.result }); state.wizard.components = (res.components || []).length; aiToast.done(`${state.wizard.components} components`); this.renderWizard(); }
-        catch (er) { aiToast.done('Error'); alert(er.message); } };
+      r.onload = async () => { const w = state.wizard; w.pcbImage = r.result; w.busy = 'Analyzing the board — boxing &amp; identifying components…'; this.renderWizard();
+        try { const res = await api.send(`/api/vehicles/${w.vid}/pcb`, 'POST', { image: r.result }); w.components = (res.components || []).length; }
+        catch (er) { alert(er.message); }
+        w.busy = null; this.renderWizard(); };
       r.readAsDataURL(f); };
     inp.click();
   },

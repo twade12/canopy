@@ -121,7 +121,8 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 
 /* markdown + pinref */
 .md { line-height: 1.6; font-size: 13.5px; }
-.md h1,.md h2,.md h3 { color: var(--accent); margin: 12px 0 6px; font-size: 15px; }
+.md h1,.md h2,.md h3,.md h4,.md h5,.md h6 { color: var(--accent); margin: 12px 0 6px; font-size: 15px; }
+.md h1 { font-size: 18px; } .md h2 { font-size: 16px; } .md h4 { font-size: 13.5px; } .md h5,.md h6 { font-size: 12.5px; color: var(--text); }
 .md ul,.md ol { margin: 6px 0; padding-left: 22px; } .md li { margin: 3px 0; }
 .md code { background: var(--panel-2); padding: 1px 5px; border-radius: 5px; color: var(--cyan); font-size: 12.5px; }
 .md pre { background: var(--panel-2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; border: 1px solid var(--border); }
@@ -533,3 +534,6 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .wiz-assist { display: flex; align-items: center; gap: 9px; margin: 16px 0; padding: 11px 13px; background: var(--accent-soft); border-radius: 10px; font-size: 12.5px; }
 .wiz-assist svg { width: 18px; height: 18px; color: var(--accent); flex: none; }
 .wiz-nav { display: flex; align-items: center; gap: 8px; }
+.wiz-busy { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 140px; color: var(--muted); font-size: 13px; }
+.spinner.big { width: 34px; height: 34px; border-width: 3px; }
+.wiz-assist b { color: var(--accent); }
