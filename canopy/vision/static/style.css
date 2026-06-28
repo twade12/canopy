@@ -451,3 +451,14 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .sg-in { display: flex; align-items: center; gap: 6px; }
 .sg-in input { flex: 1; }
 .sg-in span { font-size: 11px; color: var(--muted); min-width: 24px; }
+
+/* instrument source bar + scope trigger controls */
+.scope-ctl.trig { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.scope-ctl.trig .trig-lbl { font-size: 11px; font-weight: 700; color: var(--amber); text-transform: uppercase; letter-spacing: .5px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; box-shadow: none; padding: 5px 11px; text-transform: capitalize; }
+.seg button:hover { transform: none; }
+.instr-source { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-weight: 400; }
+.instr-source select { width: auto; max-width: 210px; font-size: 12px; padding: 5px 8px; }
+.src-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--panel-2); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.src-badge.live { background: var(--danger); color: #fff; animation: dotPulse 1.8s infinite; }

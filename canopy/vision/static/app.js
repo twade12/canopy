@@ -625,8 +625,9 @@ const ui = {
   viewDmm(c) {
     const modes = [['vdc', 'V⏜', 'DC volts'], ['vac', 'V∿', 'AC volts'], ['adc', 'A⏜', 'DC current'], ['aac', 'A∿', 'AC current'], ['resistance', 'Ω', 'resistance'], ['continuity', '•))', 'continuity'], ['frequency', 'Hz', 'frequency']];
     const m = state.dmmMode || 'vdc';
+    this.instrEnsure('dmm');
     c.innerHTML = `<div class="instr dmm">
-      <div class="instr-head">${svg('gauge')} Digital Multimeter</div>
+      <div class="instr-head">${svg('gauge')} Digital Multimeter ${this.instrSourceBar()}</div>
       <div class="dmm-modes">${modes.map(([k, sym, lbl]) => `<button class="${k === m ? 'primary' : ''}" title="${lbl}" onclick="ui.dmmMode('${k}')">${sym}</button>`).join('')}</div>
       <div class="dmm-screen"><div class="dmm-val" id="dmmVal">--</div><div class="dmm-unit" id="dmmUnit"></div><div class="dmm-extra" id="dmmExtra"></div></div>
       <div class="muted" style="font-size:11px;margin-top:10px">Simulated bench by default — the <b>Signal Generator</b> drives these readings. Plug in a USB DMM and use Connect for live hardware.</div></div>`;
@@ -645,25 +646,51 @@ const ui = {
     tick(); state.dmmTimer = setInterval(tick, 300);
   },
   viewScope(c) {
+    this.instrEnsure('scope');
     const tb = state.scopeTb || 5e-4, vdiv = state.scopeVdiv || 0.5, run = state.scopeRun !== false;
+    const tg = state.scopeTrig || (state.scopeTrig = { level: 0, edge: 'rising', mode: 'auto', coupling: 'dc' });
     const tbs = [['10µs', 1e-5], ['50µs', 5e-5], ['0.1ms', 1e-4], ['0.5ms', 5e-4], ['1ms', 1e-3], ['5ms', 5e-3], ['10ms', 1e-2]];
     const vds = [0.05, 0.1, 0.2, 0.5, 1, 2];
     c.innerHTML = `<div class="instr scope">
-      <div class="instr-head">${svg('scope')} Oscilloscope <span class="muted" id="scopeRead" style="font-weight:400;font-size:11px"></span></div>
+      <div class="instr-head">${svg('scope')} Oscilloscope <span class="muted" id="scopeRead" style="font-weight:400;font-size:11px"></span>${this.instrSourceBar()}</div>
       <div class="scope-screen"><canvas id="scopeCanvas"></canvas></div>
       <div class="scope-ctl">
         <label>Time/div <select onchange="ui.scopeSet('tb',this.value)">${tbs.map(([l, val]) => `<option value="${val}" ${val === tb ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>V/div <select onchange="ui.scopeSet('vdiv',this.value)">${vds.map(val => `<option value="${val}" ${val === vdiv ? 'selected' : ''}>${val} V</option>`).join('')}</select></label>
-        <button class="${run ? 'danger' : 'primary'}" onclick="ui.scopeSet('run',${run ? 0 : 1})">${run ? 'Stop' : 'Run'}</button></div></div>`;
+        <label>Coupling <select onchange="ui.scopeSet('coupling',this.value)">${['dc', 'ac'].map(x => `<option value="${x}" ${tg.coupling === x ? 'selected' : ''}>${x.toUpperCase()}</option>`).join('')}</select></label>
+        <button class="${run ? 'danger' : 'primary'}" onclick="ui.scopeSet('run',${run ? 0 : 1})">${run ? 'Stop' : 'Run'}</button></div>
+      <div class="scope-ctl trig">
+        <span class="trig-lbl">Trigger</span>
+        <label>Level <div class="sg-in" style="width:120px"><input type="number" step="0.1" value="${tg.level}" onchange="ui.scopeSet('trigLevel',this.value)"><span>V</span></div></label>
+        <div class="seg">${['rising', 'falling'].map(x => `<button class="${tg.edge === x ? 'primary' : ''}" onclick="ui.scopeSet('trigEdge','${x}')">${x === 'rising' ? '↑' : '↓'}</button>`).join('')}</div>
+        <div class="seg">${['auto', 'normal', 'single'].map(x => `<button class="${tg.mode === x ? 'primary' : ''}" onclick="ui.scopeSet('trigMode','${x}')">${x}</button>`).join('')}</div>
+      </div></div>`;
     this.scopeConnect();
   },
-  scopeSet(k, v) { if (k === 'tb') state.scopeTb = parseFloat(v); else if (k === 'vdiv') state.scopeVdiv = parseFloat(v); else if (k === 'run') state.scopeRun = !!+v; rerenderView('scope'); },
+  scopeSet(k, v) {
+    const tg = state.scopeTrig;
+    if (k === 'tb') state.scopeTb = parseFloat(v);
+    else if (k === 'vdiv') state.scopeVdiv = parseFloat(v);
+    else if (k === 'run') state.scopeRun = !!+v;
+    else if (k === 'coupling') tg.coupling = v;
+    else if (k === 'trigLevel') tg.level = parseFloat(v) || 0;
+    else if (k === 'trigEdge') tg.edge = v;
+    else if (k === 'trigMode') { tg.mode = v; if (v === 'single') state.scopeRun = true; }
+    rerenderView('scope');
+  },
   scopeConnect() {
     if (state.scopeES) { state.scopeES.close(); state.scopeES = null; }
     if (state.scopeRun === false) { this.scopeDraw(null); return; }
-    const es = new EventSource(`/api/instr/scope/stream?timebase=${state.scopeTb || 5e-4}&samples=500`);
-    state.scopeES = es;
-    es.onmessage = e => { const cv = el('scopeCanvas'); if (!cv) { es.close(); state.scopeES = null; return; } try { this.scopeDraw(JSON.parse(e.data)); } catch {} };
+    const tg = state.scopeTrig || { level: 0, edge: 'rising', mode: 'auto', coupling: 'dc' };
+    const url = `/api/instr/scope/stream?timebase=${state.scopeTb || 5e-4}&samples=500&trig_level=${tg.level}&trig_edge=${tg.edge}&coupling=${tg.coupling}`;
+    const es = new EventSource(url); state.scopeES = es;
+    es.onmessage = e => {
+      const cv = el('scopeCanvas'); if (!cv) { es.close(); state.scopeES = null; return; }
+      let fr; try { fr = JSON.parse(e.data); } catch { return; }
+      if (tg.mode === 'normal' && !fr.trig) return;       // wait for a trigger
+      this.scopeDraw(fr);
+      if (tg.mode === 'single' && fr.trig) { es.close(); state.scopeES = null; state.scopeRun = false; rerenderView('scope'); }
+    };
   },
   scopeDraw(frame) {
     const cv = el('scopeCanvas'); if (!cv) return; const wrap = cv.parentElement; const dpr = devicePixelRatio || 1;
@@ -675,18 +702,25 @@ const ui = {
     for (let i = 0; i <= cols; i++) { const px = i / cols * W; x.beginPath(); x.moveTo(px, 0); x.lineTo(px, H); x.stroke(); }
     for (let i = 0; i <= rows; i++) { const py = i / rows * H; x.beginPath(); x.moveTo(0, py); x.lineTo(W, py); x.stroke(); }
     x.strokeStyle = 'rgba(110,230,170,.3)'; x.beginPath(); x.moveTo(0, H / 2); x.lineTo(W, H / 2); x.moveTo(W / 2, 0); x.lineTo(W / 2, H); x.stroke();
+    const vdiv = state.scopeVdiv || 0.5, divH = H / rows;
+    // trigger level line + marker
+    const tg = state.scopeTrig;
+    if (tg && frame) { const ty = H / 2 - (frame.trig_level != null ? frame.trig_level : tg.level) / vdiv * divH;
+      if (ty > 2 && ty < H - 2) { x.strokeStyle = 'rgba(245,213,52,.7)'; x.setLineDash([5, 4]); x.lineWidth = 1; x.beginPath(); x.moveTo(0, ty); x.lineTo(W, ty); x.stroke(); x.setLineDash([]);
+        x.fillStyle = 'rgba(245,213,52,.9)'; x.beginPath(); x.moveTo(W - 1, ty); x.lineTo(W - 9, ty - 5); x.lineTo(W - 9, ty + 5); x.fill(); } }
     if (!frame || !frame.ch1) return;
-    const vdiv = state.scopeVdiv || 0.5, n = frame.ch1.length, divH = H / rows;
+    const n = frame.ch1.length;
     x.strokeStyle = '#34f5a0'; x.lineWidth = 2; x.shadowColor = '#34f5a0'; x.shadowBlur = 9; x.beginPath();
     for (let i = 0; i < n; i++) { const px = i / (n - 1) * W; const py = H / 2 - frame.ch1[i] / vdiv * divH; i ? x.lineTo(px, py) : x.moveTo(px, py); }
     x.stroke(); x.shadowBlur = 0;
-    const rd = el('scopeRead'); if (rd) rd.textContent = `${(frame.span * 1000).toFixed(2)} ms window · ${vdiv} V/div`;
+    const rd = el('scopeRead'); if (rd) rd.textContent = `${(frame.span * 1000).toFixed(2)} ms · ${vdiv} V/div · trig ${frame.trig ? 'OK' : '...'}`;
   },
   async viewSiggen(c) {
     if (!state.siggen) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.siggenLoad(); return; }
     const s = state.siggen, waves = ['sine', 'square', 'triangle', 'sawtooth', 'dc'];
+    this.instrEnsure('siggen');
     c.innerHTML = `<div class="instr siggen">
-      <div class="instr-head">${svg('siggen')} Signal Generator</div>
+      <div class="instr-head">${svg('siggen')} Signal Generator ${this.instrSourceBar()}</div>
       <div class="scope-screen sg-prev"><canvas id="sgPrev"></canvas></div>
       <div class="sg-waves">${waves.map(w => `<button class="${w === s.waveform ? 'primary' : ''}" onclick="ui.siggenSet({waveform:'${w}'})">${w}</button>`).join('')}</div>
       <div class="sg-row"><label>Frequency<div class="sg-in"><input id="sgFreq" type="number" value="${s.freq_hz}" onchange="ui.siggenSet({freq_hz:+this.value})"><span>Hz</span></div></label>
@@ -713,6 +747,29 @@ const ui = {
       i ? x.lineTo(i, py) : x.moveTo(i, py); }
     x.stroke(); x.shadowBlur = 0;
   },
+  // shared instrument source (Simulated <-> real USB device)
+  instrSourceBar() {
+    const s = state.instrStatus || { mock: true };
+    return `<span class="instr-source"><span class="src-badge ${s.mock ? '' : 'live'}">${s.mock ? 'simulated' : 'LIVE'}</span>
+      <select id="instrPort" title="Measurement source" onchange="ui.instrConnect(this.value)">
+        <option value="">Simulated bench</option>
+        ${(state.instrPorts || []).map(p => `<option value="${esc(p.device)}" ${state.instrPort === p.device ? 'selected' : ''}>${esc(p.device)}${p.desc ? ' · ' + esc(p.desc) : ''}</option>`).join('')}
+      </select><button class="iconbtn" title="Rescan USB ports" onclick="ui.instrPorts()">${svg('reset')}</button></span>`;
+  },
+  async instrEnsure(view) {
+    if (state.instrPorts !== undefined) return;
+    state.instrPorts = [];
+    try { state.instrPorts = (await api.get('/api/instr/ports')).ports || []; } catch {}
+    try { state.instrStatus = await api.get('/api/instr/status'); } catch {}
+    rerenderView(view);
+  },
+  async instrConnect(port) {
+    try { state.instrStatus = await api.send('/api/instr/connect', 'POST', { port: port || '' }); state.instrPort = port || '';
+      aiToast.show(port ? ('Connected to ' + port) : 'Simulated bench'); aiToast.hide(1500);
+      ['dmm', 'scope', 'siggen'].forEach(v => rerenderView(v));
+    } catch (e) { alert(e.message); }
+  },
+  async instrPorts() { state.instrPorts = undefined; await this.instrEnsure('scope'); ['dmm', 'siggen'].forEach(v => rerenderView(v)); },
 
   // ---------- guided repair triage ----------
   viewTriage(c) {

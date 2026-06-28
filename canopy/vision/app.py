@@ -1037,6 +1037,17 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def instr_connect(body: InstrConnectBody) -> dict:
         return instruments.connect(body.port or None)
 
+    @app.get("/api/instr/ports")
+    def instr_ports() -> dict:
+        ports = []
+        try:
+            from serial.tools import list_ports
+            ports = [{"device": p.device, "desc": p.description or ""}
+                     for p in list_ports.comports()]
+        except Exception:
+            pass
+        return {"ports": ports}
+
     @app.get("/api/instr/dmm")
     def instr_dmm(mode: str = "vdc") -> dict:
         return instruments.dmm(mode)
@@ -1050,14 +1061,16 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         return instruments.set_siggen(**body.model_dump(exclude_none=True))
 
     @app.get("/api/instr/scope/stream")
-    def instr_scope_stream(timebase: float = 0.001, samples: int = 480) -> StreamingResponse:
+    def instr_scope_stream(timebase: float = 0.001, samples: int = 480, trig_level: float = 0.0,
+                           trig_edge: str = "rising", coupling: str = "dc") -> StreamingResponse:
         samples = max(64, min(2000, samples))
 
         def gen():
             frame = 0
             while True:
                 frame += 1
-                fr = instruments.scope_frame(timebase, samples, frame)
+                fr = instruments.scope_frame(
+                    timebase, samples, frame, trig_level, trig_edge, coupling)
                 yield f"data: {json.dumps(fr)}\n\n"
                 time.sleep(0.04)  # ~25 fps
 

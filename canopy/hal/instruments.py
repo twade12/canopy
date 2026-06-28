@@ -118,13 +118,42 @@ class MockInstrument(Instrument):
         return {"mode": mode, "value": 0.0, "unit": ""}
 
     # --- scope ---
-    def scope_frame(self, timebase_s: float, samples: int = 480, frame: int = 0) -> dict:
-        """A triggered window (rising edge at t=0) so the trace is stable; light noise added."""
+    def _mean_dc(self) -> float:
+        period = 1.0 / max(1e-6, self.sg.freq_hz)
+        n = 256
+        return sum(self.sg.value_at(period * i / n) for i in range(n)) / n
+
+    def _trigger_offset(self, level: float, edge: str) -> tuple[float, bool]:
+        """Time offset (within one period) of the first level crossing on the chosen edge."""
+        if not self.sg.enabled or self.sg.waveform == "dc":
+            return 0.0, False
+        period = 1.0 / max(1e-6, self.sg.freq_hz)
+        n = 2000
+        prev = self.sg.value_at(0.0)
+        for i in range(1, n + 1):
+            t = period * i / n
+            v = self.sg.value_at(t)
+            up = v >= level > prev
+            down = v <= level < prev
+            if (edge == "rising" and up) or (edge == "falling" and down):
+                return t, True
+            prev = v
+        return 0.0, False
+
+    def scope_frame(self, timebase_s: float, samples: int = 480, frame: int = 0,
+                    trig_level: float = 0.0, trig_edge: str = "rising",
+                    coupling: str = "dc") -> dict:
+        """One captured window. The window starts at the trigger crossing so the trace is stable;
+        AC coupling removes the DC component; light noise is added for realism."""
         span = max(1e-6, timebase_s) * 10.0  # 10 horizontal divisions
         dt = span / samples
+        t_off, trig = self._trigger_offset(trig_level, trig_edge)
+        dc = self._mean_dc() if coupling == "ac" else 0.0
         nz = (self.sg.amp_vpp / 2.0 or 1.0) * 0.012
-        ch1 = [round(self.sg.value_at(i * dt) + random.gauss(0, nz), 4) for i in range(samples)]
-        return {"frame": frame, "dt": dt, "span": span, "ch1": ch1, "trig": self.sg.enabled}
+        ch1 = [round(self.sg.value_at(t_off + i * dt) - dc + random.gauss(0, nz), 4)
+               for i in range(samples)]
+        return {"frame": frame, "dt": dt, "span": span, "ch1": ch1, "trig": trig,
+                "trig_level": round(trig_level - dc, 4)}
 
 
 class SerialInstrument(Instrument):
@@ -151,8 +180,11 @@ class SerialInstrument(Instrument):
     def dmm(self, mode: str) -> dict:
         return self._txn({"op": "dmm", "mode": mode})
 
-    def scope_frame(self, timebase_s: float, samples: int = 480, frame: int = 0) -> dict:
-        return self._txn({"op": "scope_once", "timebase": timebase_s, "samples": samples})
+    def scope_frame(self, timebase_s: float, samples: int = 480, frame: int = 0,
+                    trig_level: float = 0.0, trig_edge: str = "rising",
+                    coupling: str = "dc") -> dict:
+        return self._txn({"op": "scope_once", "timebase": timebase_s, "samples": samples,
+                          "trig_level": trig_level, "trig_edge": trig_edge, "coupling": coupling})
 
     def close(self) -> None:
         try:

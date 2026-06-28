@@ -21,13 +21,15 @@ replies with one object. The scope uses a continuous stream.
 | `siggen` | set the generator | echoes `{waveform, freq_hz, amp_vpp, offset_v, duty, enabled}` |
 | `scope_start` | begin streaming frames | device emits `frame` lines until `scope_stop` |
 | `scope_stop` | stop streaming | `{ok:true}` |
-| `scope_cfg` | timebase/samples/trigger | `{ok:true}` |
+| `scope_cfg` | timebase/samples/trigger/coupling | `{ok:true}` — fields: `timebase`, `samples`, `trig_level` (V), `trig_edge` (`rising`/`falling`), `coupling` (`dc`/`ac`) |
 
 ## Scope frame (device → host, streamed)
 ```json
 {"frame": 1, "dt": 2.0e-6, "ch1": [0.01, 0.42, ...], "trig": true}
 ```
-`dt` = seconds between samples; `ch1` = volts. The host renders the graticule, V/div, and time/div.
+`dt` = seconds between samples; `ch1` = volts; `trig` = whether this frame is triggered;
+`trig_level` = the (coupling-adjusted) trigger level in volts. The host renders the graticule,
+V/div, time/div, and the trigger-level line, and decides redraw policy by mode (auto/normal/single).
 
 ## Signal generator parameters
 `waveform` ∈ `sine square triangle sawtooth dc`; `freq_hz`, `amp_vpp` (peak-to-peak volts),
