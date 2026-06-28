@@ -105,7 +105,8 @@ vehicle's saved facts and extracted pinout. Be precise and practical. Cite pin n
 connector names from the diagram. When asked how to wire for CAN or simulate a circuit
 (e.g. an A/C clutch relay), give concrete steps referencing the station resources (KL30,
 KL15, GND, CAN-H, CAN-L). Always remind the tech to verify power/ground before energizing.
-If something is not in the diagram or saved facts, say so rather than guessing."""
+If something is not in the diagram or saved facts, say so rather than guessing.
+FORMATTING: use plain Unicode symbols (µ, Ω, °, ≥, ±) — never LaTeX or $...$ math."""
 
 TAGS_SYSTEM = """You label an automotive/electronics triage project with short, searchable
 tags from its wiring diagram. Return ONLY JSON: {"tags": ["Ford", "F-250", "2016",
@@ -132,6 +133,9 @@ diagnosing and fixing a failed automotive/industrial electronic module (ECU, BCM
 cluster, GPCM, etc.). You are given the module's known pinout and accumulated memories, and
 the technician may attach photos (the PCB/board, an oscilloscope screen, a multimeter
 reading, a connector).
+
+FORMATTING: write values in plain text with Unicode symbols (µ, Ω, °, ≥, ±, ×) — never use
+LaTeX or $...$ math (write "100µF", "≥0.5Ω", "100mV pp", not "$100\\mu F$").
 
 Work as an INTERACTIVE loop — one step at a time:
 - Use (or ask for) the symptom. Propose the SINGLE most informative NEXT check. Say exactly

@@ -53,8 +53,28 @@ const state = { records: [], current: null, page: 0, pageTotal: 1, diagramId: nu
   theme: localStorage.getItem('canopy-theme') || 'light', sidebar: true, dock: null };
 
 // ---------- markdown ----------
+// Local models often emit inline LaTeX ($\mu$F, $\geq$, $>0.5\Omega$); convert the common
+// electronics symbols to plain Unicode so they render instead of showing raw markup.
+const TEX_MAP = { '\\mu': 'µ', '\\Omega': 'Ω', '\\omega': 'ω', '\\ohm': 'Ω', '\\geq': '≥',
+  '\\leq': '≤', '\\neq': '≠', '\\times': '×', '\\cdot': '·', '\\pm': '±', '\\mp': '∓',
+  '\\approx': '≈', '\\sim': '~', '\\degree': '°', '\\circ': '°', '\\Delta': 'Δ', '\\delta': 'δ',
+  '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\lambda': 'λ', '\\pi': 'π', '\\tau': 'τ',
+  '\\infty': '∞', '\\rightarrow': '→', '\\to': '→', '\\leftarrow': '←', '\\,': ' ', '\\;': ' ' };
+const SUP = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻' };
+const SUB = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉' };
+function texConv(inner) {
+  let x = inner.replace(/\\(?:text|mathrm|mathbf|rm)\{([^}]*)\}/g, '$1');
+  for (const k in TEX_MAP) x = x.split(k).join(TEX_MAP[k]);
+  x = x.replace(/\^\{?(-?\d+)\}?/g, (_, d) => [...d].map(ch => SUP[ch] || ch).join(''));
+  x = x.replace(/_\{?(\d+)\}?/g, (_, d) => [...d].map(ch => SUB[ch] || ch).join(''));
+  return x.replace(/\\[a-zA-Z]+/g, '').replace(/[{}]/g, '').trim();
+}
+function deTex(s) {
+  return s.replace(/\$([^$\n]+?)\$/g, (_, i) => texConv(i)).replace(/\\\(([\s\S]*?)\\\)/g, (_, i) => texConv(i));
+}
 function md(t) {
   let s = esc(t).replace(/```([\s\S]*?)```/g, (_, c) => `<pre><code>${c.trim()}</code></pre>`);
+  s = deTex(s);
   const lines = s.split('\n'); let out = '', list = null, tbl = [];
   const close = () => { if (list) { out += `</${list}>`; list = null; } };
   const flushTbl = () => { if (!tbl.length) return;
