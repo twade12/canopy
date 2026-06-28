@@ -18,6 +18,8 @@ const ICON = {
   arrow: '<path d="M5 19L19 5M19 5h-7M19 5v7"/>',
   expand: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>', compress: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
   book: '<path d="M5 4h11a2 2 0 012 2v14H7a2 2 0 00-2 2z"/><path d="M9 4v14"/>',
+  guide: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
+  check: '<path d="M5 12l4 4L19 6"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -29,6 +31,7 @@ const svg = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24">${ICON
 const VIEWS = [
   { key: 'diagram', label: 'Diagram', icon: 'diagram' }, { key: 'pinout', label: 'Pinout', icon: 'pinout' },
   { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
+  { key: 'guided', label: 'Guided', icon: 'guide' },
   { key: 'triage', label: 'Triage', icon: 'triage' }, { key: 'pcb', label: 'PCB', icon: 'chip' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
   { key: 'wiki', label: 'Wiki', icon: 'record' },
@@ -37,6 +40,12 @@ const VIEWS = [
   { key: 'knowledge', label: 'Knowledge', icon: 'book' },
 ];
 const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research', 'knowledge']);  // usable without a project
+const GUIDED_PHASES = [
+  { key: 'intake', label: 'Intake' }, { key: 'sealed', label: 'Sealed checks' },
+  { key: 'powerup', label: 'Power-up' }, { key: 'inspect', label: 'Open & inspect' },
+  { key: 'board', label: 'Board checks' }, { key: 'rootcause', label: 'Root cause' },
+  { key: 'document', label: 'Document' },
+];
 const meta = k => VIEWS.find(v => v.key === k) || { label: k, icon: 'diagram' };
 
 const api = {
@@ -286,7 +295,7 @@ function renderViewInto(view, c) {
   const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge };
   if (globals[view]) return globals[view].call(ui, c);
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
-  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki })[view].call(ui, c);
+  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki, guided: ui.viewGuided })[view].call(ui, c);
 }
 
 // ================= UI =================
@@ -335,7 +344,7 @@ const ui = {
     el('recordList').innerHTML = html || '<p class="muted" style="padding:8px">No projects. Create one with +.</p>';
   },
   async newRecord() { const v = await api.send('/api/vehicles', 'POST', { label: 'New project' }); await this.loadRecords(); this.select(v.id); },
-  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null;
+  async select(id) { state.current = await api.get('/api/vehicles/' + id); state.page = 0; state.selectedPin = null; state.plan = ''; state.zoom = 1; state.triageMsgs = null; state.triageImage = null; state.pcbImage = null; state.pcbComponents = null; state.pcbSel = null; state.pcbZoom = pcbZoomFor(id); state.pcbEdit = null; state.pcbPhotos = null; state.pcbPhotoId = null; state.pcbEditMode = false; state.wikiMd = null; state.guidedLog = null; state.guidedStep = null; state.guidedPhase = 'intake'; state.guidedSymptom = '';
     try { sessionStorage.setItem('canopy-project', id); } catch {} setTitle(); this.renderRecords(); renderDock(); },
 
   // ---------- diagram ----------
@@ -796,6 +805,64 @@ const ui = {
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(state.current.label || 'CANOPY wiki')}</title>
       <style>body{font-family:system-ui,sans-serif;max-width:820px;margin:24px auto;padding:0 16px;line-height:1.55;color:#111}img{max-width:100%;border:1px solid #ddd;border-radius:6px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:4px 8px;font-size:13px;text-align:left}h1,h2{border-bottom:1px solid #eee;padding-bottom:4px}code{background:#f3f3f3;padding:1px 4px;border-radius:4px}</style></head>
       <body>${md(state.wikiMd)}</body></html>`); w.document.close(); setTimeout(() => w.print(), 350); },
+
+  // ---------- guided walkthrough (physics-first, step by step) ----------
+  viewGuided(c) {
+    if (state.guidedLog == null) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.loadGuided(); return; }
+    const phases = GUIDED_PHASES; const cur = state.guidedPhase;
+    const curIdx = phases.findIndex(p => p.key === cur);
+    const ladder = phases.map((p, i) => `<div class="gp ${p.key === cur ? 'cur' : (i < curIdx ? 'done' : '')}" onclick="ui.guidedSetPhase('${p.key}')"><span class="gp-n">${i < curIdx ? svg('check') : i + 1}</span>${p.label}</div>`).join('<span class="gp-sep"></span>');
+    const s = state.guidedStep;
+    let stepCard;
+    if (s && s.done) stepCard = `<div class="g-step done"><div class="g-title">${svg('check')} Diagnosis concluded</div>
+        <div class="g-row"><b>Root cause:</b> ${esc(s.root_cause)}</div><div class="g-row"><b>Repair &amp; re-verify:</b> ${esc(s.repair)}</div>
+        <div class="row" style="margin-top:8px"><button class="primary" onclick="ui.guidedCompile()">${svg('record')} Compile wiki</button></div></div>`;
+    else if (s) stepCard = `<div class="g-step"><div class="g-title">${esc(s.title)} ${s.tool && s.tool !== 'none' ? `<span class="tagchip">${esc(s.tool)}</span>` : ''}</div>
+        ${s.why ? `<div class="g-row"><b>Why:</b> ${esc(s.why)}</div>` : ''}
+        ${s.how ? `<div class="g-row"><b>How:</b> ${esc(s.how)}</div>` : ''}
+        ${s.expected ? `<div class="g-row"><b>Expected:</b> ${esc(s.expected)}</div>` : ''}
+        ${s.record ? `<div class="g-row"><b>Record:</b> ${esc(s.record)}</div>` : ''}
+        ${s.safety ? `<div class="g-row warn" style="color:var(--cyan)">${svg('warn')} ${esc(s.safety)}</div>` : ''}
+        <input id="gResult" placeholder="What did you measure / observe?" style="margin-top:8px">
+        <div class="row" style="margin-top:6px"><button class="ok" onclick="ui.guidedRecord('pass')">Pass</button><button class="danger" onclick="ui.guidedRecord('fail')">Fail / issue</button><button onclick="ui.guidedRecord('note')">Note</button><button class="ghost" style="margin-left:auto" onclick="ui.guidedNext()">Skip / re-suggest</button></div></div>`;
+    else stepCard = `<div class="g-step muted"><div class="g-row">Ready when you are. Describe the customer symptom below, then get the first recommended step for <b>${esc(phases[curIdx] ? phases[curIdx].label : cur)}</b>.</div>
+        <button class="primary" style="margin-top:8px" onclick="ui.guidedNext()">${svg('guide')} Suggest next step</button></div>`;
+    c.innerHTML = `<div class="guided-col">
+      <div class="g-ladder">${ladder}</div>
+      <div class="g-sym"><textarea id="gSymptom" placeholder="Customer symptom (e.g. no-start, no comms, intermittent…)" oninput="state.guidedSymptom=this.value">${esc(state.guidedSymptom || '')}</textarea><button onclick="ui.guidedRecordSymptom()">Record symptom</button></div>
+      ${stepCard}
+      <div class="g-log"><div class="muted" style="font-size:11px;margin:10px 0 4px">Walkthrough log${state.guidedLog.length ? ` (${state.guidedLog.length})` : ''}</div>
+        ${state.guidedLog.map(m => `<div class="g-le">${esc(m.content)}</div>`).join('') || '<div class="muted" style="font-size:12px">No steps yet.</div>'}</div>
+    </div>`;
+  },
+  async loadGuided() {
+    try { state.guidedLog = await api.get(`/api/vehicles/${state.current.id}/guided/log`); }
+    catch { state.guidedLog = []; }
+    if (!state.guidedSymptom) { const sy = (state.guidedLog || []).find(m => / Symptom /.test(m.content) || m.content.includes('[intake] Symptom')); if (sy) state.guidedSymptom = sy.content.split('→').pop().replace(/^[^:]*:/, '').trim(); }
+    rerenderView('guided');
+  },
+  guidedSetPhase(key) { state.guidedPhase = key; state.guidedStep = null; rerenderView('guided'); },
+  async guidedRecordSymptom() {
+    const v = (el('gSymptom') || {}).value || ''; if (!v.trim()) return; state.guidedSymptom = v.trim();
+    try { await api.send(`/api/vehicles/${state.current.id}/guided/step`, 'POST', { phase: 'intake', title: 'Symptom', result: v.trim(), status: 'note' });
+      state.guidedLog = await api.get(`/api/vehicles/${state.current.id}/guided/log`); aiToast.done('Symptom recorded'); rerenderView('guided'); } catch (e) { alert(e.message); }
+  },
+  async guidedNext() {
+    aiToast.show('Thinking through the next step…', true);
+    try { const step = await api.send(`/api/vehicles/${state.current.id}/guided/next`, 'POST', { phase: state.guidedPhase, symptom: state.guidedSymptom || (el('gSymptom') || {}).value || '' });
+      state.guidedStep = step; aiToast.done('Next step ready'); rerenderView('guided');
+    } catch (e) { aiToast.done('Error'); alert(e.message); }
+  },
+  async guidedRecord(status) {
+    const s = state.guidedStep; if (!s) return; const result = (el('gResult') || {}).value || '';
+    try { await api.send(`/api/vehicles/${state.current.id}/guided/step`, 'POST', { phase: state.guidedPhase, title: s.title, result, status });
+      if (s.phase_complete && s.next_phase) state.guidedPhase = s.next_phase;
+      state.guidedStep = null;
+      state.guidedLog = await api.get(`/api/vehicles/${state.current.id}/guided/log`);
+      rerenderView('guided'); this.guidedNext();  // auto-advance to the next recommendation
+    } catch (e) { alert(e.message); }
+  },
+  guidedCompile() { ensureView('wiki'); this.loadWiki(true); },
 
   // ---------- house knowledge base browser ----------
   viewKnowledge(c) {

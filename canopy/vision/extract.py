@@ -17,6 +17,7 @@ from canopy.vision.prompts import (
     CHAT_SYSTEM,
     COMPONENT_IDENTIFY_SYSTEM,
     EXTRACT_SYSTEM,
+    GUIDED_SYSTEM,
     IDENTIFY_SYSTEM,
     MEMORY_SUGGEST_SYSTEM,
     PCB_SYSTEM,
@@ -88,6 +89,29 @@ def identify_component(client: OllamaClient, label: str, part: str = "", context
     ]
     data = parse_json_object(client.chat(messages, temperature=0.1))
     return {"function": str(data.get("function", "")), "check": str(data.get("check", ""))}
+
+
+def guided_next(client: OllamaClient, *, context: str, phase: str, symptom: str, log: str) -> dict:
+    """Recommend the single next guided-repair step as structured JSON (see GUIDED_SYSTEM)."""
+    user = (f"CURRENT PHASE: {phase}\nSYMPTOM: {symptom or '(not stated yet)'}\n\n"
+            f"STEPS DONE SO FAR (with results):\n{log or '(none yet)'}\n\n"
+            f"MODULE + KNOWLEDGE:\n{context}\n\nGive the next step as JSON.")
+    messages = [ChatMessage("system", GUIDED_SYSTEM), ChatMessage("user", user)]
+    data = parse_json_object(client.chat(messages, temperature=0.2))
+    return {
+        "title": str(data.get("title", "")),
+        "why": str(data.get("why", "")),
+        "how": str(data.get("how", "")),
+        "tool": str(data.get("tool", "")),
+        "expected": str(data.get("expected", "")),
+        "record": str(data.get("record", "")),
+        "safety": str(data.get("safety", "")),
+        "phase_complete": bool(data.get("phase_complete", False)),
+        "next_phase": str(data.get("next_phase", phase) or phase),
+        "done": bool(data.get("done", False)),
+        "root_cause": str(data.get("root_cause", "")),
+        "repair": str(data.get("repair", "")),
+    }
 
 
 def assistant_stream(client: OllamaClient, question: str, *, context: str, history: list):

@@ -151,6 +151,18 @@ class AnnotationBody(BaseModel):
     note: str = ""   # caption
 
 
+class GuidedNextBody(BaseModel):
+    phase: str = "intake"
+    symptom: str = ""
+
+
+class GuidedStepBody(BaseModel):
+    phase: str
+    title: str
+    result: str = ""
+    status: str = "note"  # pass | fail | note | finding
+
+
 def _parse_id(v: str) -> int:
     v = v.strip()
     return int(v, 16) if v.lower().startswith("0x") else int(v, 16)
@@ -769,6 +781,34 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     @app.delete("/api/pcb-component/{comp_id}")
     def pcb_component_delete(comp_id: int) -> dict:
         store.delete_pcb_component(comp_id)
+        return {"ok": True}
+
+    # --- guided walkthrough (physics-first, step-by-step) ----------------------
+    @app.get("/api/vehicles/{vehicle_id}/guided/log")
+    def guided_log(vehicle_id: int) -> list[dict]:
+        return store.list_messages(vehicle_id, channel="guided")
+
+    @app.post("/api/vehicles/{vehicle_id}/guided/next")
+    def guided_next(vehicle_id: int, body: GuidedNextBody) -> dict:
+        log_msgs = store.list_messages(vehicle_id, channel="guided")
+        log = "\n".join(m["content"] for m in log_msgs)
+        context = kb.context_block(f"{body.symptom} {body.phase}") + "\n\n" \
+            + chat_context(vehicle_id, body.symptom or body.phase)
+        try:
+            return extract.guided_next(
+                client, context=context, phase=body.phase, symptom=body.symptom, log=log)
+        except OllamaError as e:
+            raise HTTPException(503, str(e)) from e
+
+    @app.post("/api/vehicles/{vehicle_id}/guided/step")
+    def guided_step(vehicle_id: int, body: GuidedStepBody) -> dict:
+        entry = f"[{body.phase}] {body.title} → {body.status.upper()}"
+        if body.result:
+            entry += f": {body.result}"
+        store.add_message(vehicle_id, "user", entry, channel="guided")
+        # A confirmed finding compounds into the cross-module case history.
+        if body.status in ("fail", "finding"):
+            save_memory_if_novel(vehicle_id, f"Guided finding — {entry}", "case")
         return {"ok": True}
 
     @app.post("/api/vehicles/{vehicle_id}/report")
