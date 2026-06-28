@@ -318,12 +318,14 @@ const anno = {
   },
 };
 
+function viewIn(c) { c.classList.remove('view-in'); void c.offsetWidth; c.classList.add('view-in'); }
 function renderViewInto(view, c) {
   if (!c) return;
-  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge };
-  if (globals[view]) return globals[view].call(ui, c);
-  if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; return; }
+  const globals = { api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge, dmm: ui.viewDmm, scope: ui.viewScope, siggen: ui.viewSiggen };
+  if (globals[view]) { globals[view].call(ui, c); viewIn(c); return; }
+  if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; viewIn(c); return; }
   ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki, guided: ui.viewGuided, profile: ui.viewProfile })[view].call(ui, c);
+  viewIn(c);
 }
 
 // ================= UI =================
@@ -1090,4 +1092,13 @@ const ui = {
   },
   cancelStream() { if (state.streamCtrl) { state.streamCtrl.abort(); aiToast.done('Stopped'); } },
 };
+// click ripple on any button (CSS gives buttons position:relative; overflow:hidden)
+document.addEventListener('pointerdown', e => {
+  const btn = e.target.closest('button'); if (!btn || btn.disabled) return;
+  const r = btn.getBoundingClientRect(), d = Math.max(r.width, r.height);
+  const sp = document.createElement('span'); sp.className = 'ripple';
+  sp.style.width = sp.style.height = d + 'px';
+  sp.style.left = (e.clientX - r.left - d / 2) + 'px'; sp.style.top = (e.clientY - r.top - d / 2) + 'px';
+  btn.appendChild(sp); setTimeout(() => sp.remove(), 580);
+});
 ui.init();

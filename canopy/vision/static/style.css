@@ -327,3 +327,90 @@ button.ok { background: var(--accent); color: #fff; border-color: var(--accent);
 .wiki-doc th, .wiki-doc td { border: 1px solid var(--border); padding: 4px 9px; font-size: 12.5px; text-align: left; }
 .wiki-doc th { background: var(--panel-2); }
 .wiki-doc img.md-img { max-width: 360px; max-height: 280px; }
+
+/* ============================ premium motion layer ============================ */
+:root { --ease: cubic-bezier(.4,0,.2,1); --spring: cubic-bezier(.34,1.4,.5,1);
+  --glow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* buttons: hover lift, press, primary glow + sheen */
+button { transition: transform .14s var(--spring), box-shadow .2s var(--ease),
+  background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease); position: relative; overflow: hidden; }
+button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(20,50,38,.12); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+button:active { transform: translateY(0) scale(.96); box-shadow: none; }
+button:disabled { opacity: .55; transform: none; box-shadow: none; cursor: default; }
+button.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent)); box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 30%, transparent); }
+button.primary:hover { box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 42%, transparent); filter: brightness(1.04); }
+button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+button.ghost { box-shadow: none; }
+
+/* icon buttons + chips */
+.iconbtn { transition: transform .14s var(--spring), background .16s var(--ease), color .16s var(--ease); }
+.iconbtn:hover { background: var(--panel-2); color: var(--text); transform: translateY(-1px); }
+.iconbtn:active { transform: scale(.9); }
+.chip, .tagchip { transition: transform .14s var(--spring), background .16s, border-color .16s, box-shadow .16s; }
+.chip:hover { transform: translateY(-1px); border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 3px 10px rgba(20,50,38,.1); }
+.tagchip:hover { border-color: var(--accent); }
+
+/* tabs: hover + active indicator slide + drag feedback */
+.tab { transition: background .15s var(--ease), color .15s var(--ease), transform .12s var(--ease); position: relative; }
+.tab:hover { background: var(--panel-2); color: var(--text); }
+.tab.active::after { content: ""; position: absolute; left: 9px; right: 9px; bottom: -4px; height: 2px;
+  border-radius: 2px; background: var(--accent); animation: tabBar .28s var(--spring); }
+@keyframes tabBar { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+.tab.dragging { opacity: .45; transform: scale(.94) rotate(-1deg); }
+.tab .x { transition: transform .12s var(--spring), color .12s; border-radius: 5px; }
+.tab .x:hover { transform: scale(1.25); color: var(--danger); }
+
+/* inputs: focus glow */
+input, textarea, select { transition: border-color .16s var(--ease), box-shadow .16s var(--ease), background .16s; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: var(--glow); }
+
+/* list / card hover lifts */
+.rec-item { transition: transform .15s var(--spring), background .16s, border-color .16s, box-shadow .16s; }
+.rec-item:hover { background: var(--panel-2); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); transform: translateX(2px); box-shadow: 0 3px 12px rgba(20,50,38,.08); }
+.rec-item.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 4px 14px color-mix(in srgb, var(--accent) 18%, transparent); }
+.pcb-item, .kb-item, .pi, .rb-m, .g-le { transition: transform .14s var(--spring), background .15s, border-color .15s; }
+.pcb-item:hover, .kb-item:hover { transform: translateX(2px); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.gp { transition: transform .14s var(--spring), background .15s, color .15s, border-color .15s; }
+.gp:hover { transform: translateY(-1px); border-color: var(--accent); }
+.msg { animation: msgIn .26s var(--ease); }
+@keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* status dot pulse */
+.dot.ok { animation: dotPulse 2.4s var(--ease) infinite; }
+@keyframes dotPulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); } }
+
+/* view mount animation */
+.pc-content.view-in > * { animation: viewIn .26s var(--ease); }
+@keyframes viewIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* modal + backdrop entrance */
+.modal-backdrop { animation: fadeIn .16s var(--ease); }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal { animation: modalIn .26s var(--spring); }
+@keyframes modalIn { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+.addmenu { animation: modalIn .18s var(--spring); }
+#aiToast:not(.hidden) { animation: toastIn .3s var(--spring); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+
+/* wordmark + brand shimmer on hover */
+.wordmark { background: linear-gradient(90deg, var(--text), var(--accent), var(--text)); background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; transition: background-position .6s var(--ease); }
+.wordmark:hover { background-position: 200% center; }
+
+/* click ripple */
+.ripple { position: absolute; border-radius: 50%; transform: scale(0); pointer-events: none;
+  background: color-mix(in srgb, currentColor 32%, transparent); animation: ripple .55s var(--ease); }
+@keyframes ripple { to { transform: scale(2.6); opacity: 0; } }
+
+/* resizers + dropzones get a touch of life */
+.resizer:hover::after { background: var(--accent); }
+.dropzone { transition: border-color .2s var(--ease), background .2s var(--ease), transform .2s var(--spring); }
+.dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.01); }
+.group { transition: box-shadow .2s var(--ease); }
+.group:focus-within { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
