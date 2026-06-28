@@ -254,6 +254,15 @@ tr.pin-row { cursor: pointer; } tr.pin-row:hover { background: var(--panel-2); }
 .prof-col { display: flex; flex-direction: column; height: 100%; overflow: auto; padding: 12px 14px; }
 .prof-summary { font-size: 13px; margin-bottom: 8px; }
 .prof-cards { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.prof-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0; font-size: 11px; color: var(--muted); }
+.prof-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.prof-legend .lg i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.prof-wire { flex: none; max-height: 46vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); margin-bottom: 8px; }
+.harness-svg { width: 100%; display: block; }
+.harness-svg .hs-conn { fill: var(--panel); stroke: var(--border); stroke-width: 1; }
+.harness-svg .hs-title { font-size: 10px; font-weight: 700; fill: var(--muted); letter-spacing: .5px; }
+.harness-svg .hs-pin { font-size: 11px; fill: var(--text); }
+.harness-svg .hs-hdr { font-size: 10.5px; font-weight: 600; }
 .prof-harness { flex: none; max-height: 40vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
 .prof-harness table { border-collapse: collapse; width: 100%; }
 .prof-harness th, .prof-harness td { border-bottom: 1px solid var(--border); padding: 4px 9px; font-size: 12px; text-align: left; white-space: nowrap; }

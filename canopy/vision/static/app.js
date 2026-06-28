@@ -113,6 +113,33 @@ function md(t) {
     ? `<span class="pinref" data-pin="${n}" onmouseenter="ui.pinTip(event,'${n}')" onmouseleave="ui.hideTip()" onclick="ui.gotoPinPage('${n}')">${m}</span>` : m);
 }
 function pinIndex() { const i = {}; for (const p of (state.current?.pinouts || [])) if (p.pin && !(p.pin in i)) i[p.pin] = p; return i; }
+// Harness ribbon: module connector (left) -> colored wires -> CAB universal header (right).
+const ROLE_COLOR = { power: '#ef4444', ignition: '#ef4444', accessory: '#ef4444', ground: '#555',
+  can_h: '#0e8aa6', can_l: '#0e8aa6', can_fd_h: '#0e8aa6', can_fd_l: '#0e8aa6',
+  lin: '#8b5cf6', kline: '#8b5cf6', sensor_ref: '#0f9d6b', sensor_signal: '#0f9d6b',
+  sensor_return: '#0f9d6b', output: '#f59e0b', switch: '#6366f1', unknown: '#9ca3af' };
+function harnessSvg(harness, connector) {
+  if (!harness.length) return '<div class="muted" style="font-size:12px;padding:10px">No pins mapped yet — extract the pinout first.</div>';
+  const rowH = 26, top = 46, W = 820, bx1 = 150, bx2 = W - 150, dotL = bx1 + 9, dotR = bx2 - 9;
+  const H = top + harness.length * rowH + 16;
+  const rows = harness.map((h, i) => {
+    const y = top + i * rowH + rowH / 2;
+    const col = ROLE_COLOR[h.role] || ROLE_COLOR.unknown;
+    const cardShort = h.card ? h.card.split('-')[1] : '';
+    const lbl = `${h.module_pin} ${h.signal || ''}`.trim();
+    const rlbl = `${h.header_pin}${cardShort ? ' · ' + cardShort + ' ' + (h.channel || '') : ''}`;
+    return `<path d="M ${dotL} ${y} C ${dotL + 70} ${y}, ${dotR - 70} ${y}, ${dotR} ${y}" stroke="${col}" stroke-width="2.4" fill="none"/>
+      <circle cx="${dotL}" cy="${y}" r="3.5" fill="${col}"/><circle cx="${dotR}" cy="${y}" r="3.5" fill="${col}"/>
+      <text x="${bx1 - 12}" y="${y + 3.5}" text-anchor="end" class="hs-pin">${esc(lbl.slice(0, 30))}</text>
+      <text x="${bx2 + 12}" y="${y + 3.5}" text-anchor="start" class="hs-hdr" fill="${col}">${esc(rlbl)}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="harness-svg" preserveAspectRatio="xMidYMin meet">
+    <rect x="${bx1}" y="${top - 14}" width="18" height="${H - top}" rx="5" class="hs-conn"/>
+    <rect x="${bx2 - 18}" y="${top - 14}" width="18" height="${H - top}" rx="5" class="hs-conn"/>
+    <text x="${bx1 + 9}" y="${top - 22}" text-anchor="middle" class="hs-title">MODULE ${esc(connector || '')}</text>
+    <text x="${bx2 - 9}" y="${top - 22}" text-anchor="middle" class="hs-title">CAB HEADER</text>
+    ${rows}</svg>`;
+}
 function sigClass(s) { s = (s || '').toLowerCase();
   if (/can[\s-]?(h|hi|high|l|lo|low|\+|-)|^can\b/.test(s)) return 'can';
   if (/pwr|power|vpwr|kappwr|b\+|\+12|batt|kl30|kl15|ign|vbpwr/.test(s)) return 'pwr';
@@ -886,6 +913,8 @@ const ui = {
       <div class="warn" style="color:var(--cyan);font-size:12px;margin-bottom:8px">${svg('warn')} CONFIRM BEFORE ENERGIZE: verify power, ground, and CAN pins against the wiring diagram before CAB closes any relay.</div>
       ${p ? `<div class="prof-summary"><b>${esc(p.identity.module_class)}</b> · ${esc([p.identity.year, p.identity.make, p.identity.model].filter(Boolean).join(' ') || p.identity.label)} · connector ${esc(p.connector || '—')}
         <div class="prof-cards">${cards.map(cd => `<span class="tagchip" title="CAB card">${esc(cd)}</span>`).join('')}</div></div>
+        <div class="prof-legend">${[['power/ign', '#ef4444'], ['ground', '#555'], ['CAN', '#0e8aa6'], ['LIN', '#8b5cf6'], ['sensor', '#0f9d6b'], ['output', '#f59e0b'], ['switch', '#6366f1']].map(([t, col]) => `<span class="lg"><i style="background:${col}"></i>${t}</span>`).join('')}</div>
+        <div class="prof-wire">${harnessSvg(harness, p.connector)}</div>
         <div class="prof-harness"><table><thead><tr><th>Pin</th><th>Signal</th><th>Role</th><th>Header</th><th>CAB card</th><th>Ch</th></tr></thead><tbody>
         ${harness.map(h => `<tr><td>${esc(h.module_pin)}</td><td>${esc(h.signal)}</td><td><span class="pin ${roleClass(h.role)}">${esc(h.role)}</span></td><td>${esc(h.header_pin)}</td><td>${esc(h.card || '—')}</td><td>${esc(h.channel)}</td></tr>`).join('')}
         </tbody></table></div>` : '<div class="warn">Could not parse the profile YAML — fix it below.</div>'}
