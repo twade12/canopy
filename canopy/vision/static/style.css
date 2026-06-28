@@ -414,3 +414,40 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 @media (prefers-reduced-motion: reduce) {
   *, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* ============================ bench instruments ============================ */
+.topbar-div { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+.instr { padding: 14px; display: flex; flex-direction: column; height: 100%; }
+.instr-head { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.instr-head svg { width: 17px; height: 17px; color: var(--accent); }
+
+/* DMM */
+.dmm-modes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.dmm-modes button { min-width: 48px; font-family: ui-monospace, monospace; font-size: 14px; }
+.dmm-screen { background: #07150e; border: 1px solid var(--border); border-radius: 12px; padding: 22px 20px;
+  display: flex; align-items: baseline; gap: 12px; box-shadow: inset 0 2px 18px rgba(0,0,0,.5); }
+.dmm-val { font-family: "DejaVu Sans Mono", ui-monospace, monospace; font-weight: 700; font-size: clamp(40px, 9vw, 72px);
+  color: #34f5a0; text-shadow: 0 0 16px rgba(52,245,160,.55); letter-spacing: 1px; line-height: 1; }
+.dmm-val.beep { color: #f5d534; text-shadow: 0 0 16px rgba(245,213,52,.6); animation: beepPulse .5s infinite; }
+@keyframes beepPulse { 50% { opacity: .5; } }
+.dmm-unit { font-family: ui-monospace, monospace; font-size: 24px; color: #2bd48a; }
+.dmm-extra { margin-left: auto; align-self: flex-start; color: #f5d534; font-family: ui-monospace, monospace; font-size: 13px; }
+
+/* Oscilloscope + previews */
+.scope-screen { position: relative; flex: 1; min-height: 220px; border-radius: 12px; overflow: hidden;
+  background: radial-gradient(120% 120% at 50% 0%, #0a2018, #050d09); border: 1px solid var(--border);
+  box-shadow: inset 0 0 40px rgba(0,0,0,.55); }
+.scope-screen canvas { width: 100%; height: 100%; display: block; }
+.scope-ctl { display: flex; gap: 12px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.scope-ctl label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.scope-ctl select { width: auto; }
+.sg-prev { min-height: 120px; max-height: 150px; flex: none; margin-bottom: 12px; }
+
+/* Signal generator */
+.sg-waves { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.sg-waves button { text-transform: capitalize; }
+.sg-row { display: flex; gap: 12px; margin-bottom: 8px; }
+.sg-row label { flex: 1; font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.sg-in { display: flex; align-items: center; gap: 6px; }
+.sg-in input { flex: 1; }
+.sg-in span { font-size: 11px; color: var(--muted); min-width: 24px; }

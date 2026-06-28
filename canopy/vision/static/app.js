@@ -21,6 +21,7 @@ const ICON = {
   guide: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
   check: '<path d="M5 12l4 4L19 6"/>',
   cab: '<path d="M3 4h18v16H3z"/><path d="M7 4v16M11 4v16M15 4v16M19 4v16"/>',
+  gauge: '<path d="M4 19a8 8 0 1116 0"/><path d="M12 19l5-5"/>', scope: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M5 13h2l2-4 2 7 2-5h4"/>', siggen: '<path d="M3 12c3-7 5-7 7 0s4 7 7 0"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -39,8 +40,10 @@ const VIEWS = [
   { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
   { key: 'knowledge', label: 'Knowledge', icon: 'book' },
+  { key: 'dmm', label: 'DMM', icon: 'gauge' }, { key: 'scope', label: 'Scope', icon: 'scope' },
+  { key: 'siggen', label: 'Signal Gen', icon: 'siggen' },
 ];
-const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research', 'knowledge']);  // usable without a project
+const GLOBAL_VIEWS = new Set(['api', 'assistant', 'bench', 'research', 'knowledge', 'dmm', 'scope', 'siggen']);  // usable without a project
 const GUIDED_PHASES = [
   { key: 'intake', label: 'Intake' }, { key: 'sealed', label: 'Sealed checks' },
   { key: 'powerup', label: 'Power-up' }, { key: 'inspect', label: 'Open & inspect' },
@@ -113,6 +116,15 @@ function md(t) {
     ? `<span class="pinref" data-pin="${n}" onmouseenter="ui.pinTip(event,'${n}')" onmouseleave="ui.hideTip()" onclick="ui.gotoPinPage('${n}')">${m}</span>` : m);
 }
 function pinIndex() { const i = {}; for (const p of (state.current?.pinouts || [])) if (p.pin && !(p.pin in i)) i[p.pin] = p; return i; }
+// engineering-format a meter reading
+function fmtMeas(v, unit) {
+  const a = Math.abs(v);
+  if (unit === 'Ω') { if (a >= 1e6) return [(v / 1e6).toFixed(3), 'MΩ']; if (a >= 1e3) return [(v / 1e3).toFixed(3), 'kΩ']; return [v.toFixed(2), 'Ω']; }
+  if (unit === 'Hz') { if (a >= 1e3) return [(v / 1e3).toFixed(3), 'kHz']; return [v.toFixed(1), 'Hz']; }
+  if (unit === 'mA') return [v.toFixed(3), 'mA'];
+  if (unit === 'V') { if (a < 1 && a > 0) return [(v * 1000).toFixed(1), 'mV']; return [v.toFixed(3), 'V']; }
+  return [String(v), unit];
+}
 // Harness ribbon: module connector (left) -> colored wires -> CAB universal header (right).
 const ROLE_COLOR = { power: '#ef4444', ignition: '#ef4444', accessory: '#ef4444', ground: '#555',
   can_h: '#0e8aa6', can_l: '#0e8aa6', can_fd_h: '#0e8aa6', can_fd_l: '#0e8aa6',
@@ -336,6 +348,7 @@ const ui = {
     el('resetBtn').innerHTML = svg('reset'); el('apiBtn').innerHTML = svg('api'); el('newRecBtn').innerHTML = svg('plus'); el('searchIcon').innerHTML = svg('search');
     el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search'); el('logoutBtn').innerHTML = svg('logout');
     const kbtn = el('knowledgeBtn'); if (kbtn) kbtn.innerHTML = svg('book');
+    ['dmm:gauge', 'scope:scope', 'siggen:siggen'].forEach(p => { const [id, ic] = p.split(':'); const b = el(id + 'Btn'); if (b) b.innerHTML = svg(ic); });
     api.get('/api/auth/status').then(s => { if (s.auth) el('logoutBtn').classList.remove('hidden'); }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.streamCtrl) this.cancelStream(); });
@@ -606,6 +619,99 @@ const ui = {
   },
   async benchSend() {
     try { await api.send('/api/can/send', 'POST', { id: el('bFid').value, data: el('bFdata').value }); } catch (e) { alert(e.message); }
+  },
+
+  // ---------- bench instruments: DMM / Oscilloscope / Signal Generator ----------
+  viewDmm(c) {
+    const modes = [['vdc', 'V⏜', 'DC volts'], ['vac', 'V∿', 'AC volts'], ['adc', 'A⏜', 'DC current'], ['aac', 'A∿', 'AC current'], ['resistance', 'Ω', 'resistance'], ['continuity', '•))', 'continuity'], ['frequency', 'Hz', 'frequency']];
+    const m = state.dmmMode || 'vdc';
+    c.innerHTML = `<div class="instr dmm">
+      <div class="instr-head">${svg('gauge')} Digital Multimeter</div>
+      <div class="dmm-modes">${modes.map(([k, sym, lbl]) => `<button class="${k === m ? 'primary' : ''}" title="${lbl}" onclick="ui.dmmMode('${k}')">${sym}</button>`).join('')}</div>
+      <div class="dmm-screen"><div class="dmm-val" id="dmmVal">--</div><div class="dmm-unit" id="dmmUnit"></div><div class="dmm-extra" id="dmmExtra"></div></div>
+      <div class="muted" style="font-size:11px;margin-top:10px">Simulated bench by default — the <b>Signal Generator</b> drives these readings. Plug in a USB DMM and use Connect for live hardware.</div></div>`;
+    this.dmmStart();
+  },
+  dmmMode(k) { state.dmmMode = k; rerenderView('dmm'); },
+  dmmStart() {
+    if (state.dmmTimer) clearInterval(state.dmmTimer);
+    const tick = async () => {
+      const v = el('dmmVal'); if (!v) { clearInterval(state.dmmTimer); state.dmmTimer = null; return; }
+      try { const r = await api.get('/api/instr/dmm?mode=' + (state.dmmMode || 'vdc'));
+        if (r.mode === 'continuity') { v.textContent = r.continuity ? 'CONT' : 'OPEN'; v.className = 'dmm-val' + (r.continuity ? ' beep' : ''); el('dmmUnit').textContent = ''; el('dmmExtra').textContent = r.value + ' Ω'; }
+        else { const [val, unit] = fmtMeas(r.value, r.unit); v.textContent = val; v.className = 'dmm-val'; el('dmmUnit').textContent = unit; el('dmmExtra').textContent = r.overload ? 'OL' : ''; }
+      } catch {}
+    };
+    tick(); state.dmmTimer = setInterval(tick, 300);
+  },
+  viewScope(c) {
+    const tb = state.scopeTb || 5e-4, vdiv = state.scopeVdiv || 0.5, run = state.scopeRun !== false;
+    const tbs = [['10µs', 1e-5], ['50µs', 5e-5], ['0.1ms', 1e-4], ['0.5ms', 5e-4], ['1ms', 1e-3], ['5ms', 5e-3], ['10ms', 1e-2]];
+    const vds = [0.05, 0.1, 0.2, 0.5, 1, 2];
+    c.innerHTML = `<div class="instr scope">
+      <div class="instr-head">${svg('scope')} Oscilloscope <span class="muted" id="scopeRead" style="font-weight:400;font-size:11px"></span></div>
+      <div class="scope-screen"><canvas id="scopeCanvas"></canvas></div>
+      <div class="scope-ctl">
+        <label>Time/div <select onchange="ui.scopeSet('tb',this.value)">${tbs.map(([l, val]) => `<option value="${val}" ${val === tb ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>V/div <select onchange="ui.scopeSet('vdiv',this.value)">${vds.map(val => `<option value="${val}" ${val === vdiv ? 'selected' : ''}>${val} V</option>`).join('')}</select></label>
+        <button class="${run ? 'danger' : 'primary'}" onclick="ui.scopeSet('run',${run ? 0 : 1})">${run ? 'Stop' : 'Run'}</button></div></div>`;
+    this.scopeConnect();
+  },
+  scopeSet(k, v) { if (k === 'tb') state.scopeTb = parseFloat(v); else if (k === 'vdiv') state.scopeVdiv = parseFloat(v); else if (k === 'run') state.scopeRun = !!+v; rerenderView('scope'); },
+  scopeConnect() {
+    if (state.scopeES) { state.scopeES.close(); state.scopeES = null; }
+    if (state.scopeRun === false) { this.scopeDraw(null); return; }
+    const es = new EventSource(`/api/instr/scope/stream?timebase=${state.scopeTb || 5e-4}&samples=500`);
+    state.scopeES = es;
+    es.onmessage = e => { const cv = el('scopeCanvas'); if (!cv) { es.close(); state.scopeES = null; return; } try { this.scopeDraw(JSON.parse(e.data)); } catch {} };
+  },
+  scopeDraw(frame) {
+    const cv = el('scopeCanvas'); if (!cv) return; const wrap = cv.parentElement; const dpr = devicePixelRatio || 1;
+    const W = wrap.clientWidth, H = wrap.clientHeight; if (!W || !H) return;
+    cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    const x = cv.getContext('2d'); x.scale(dpr, dpr); x.clearRect(0, 0, W, H);
+    const cols = 10, rows = 8;
+    x.strokeStyle = 'rgba(110,230,170,.13)'; x.lineWidth = 1;
+    for (let i = 0; i <= cols; i++) { const px = i / cols * W; x.beginPath(); x.moveTo(px, 0); x.lineTo(px, H); x.stroke(); }
+    for (let i = 0; i <= rows; i++) { const py = i / rows * H; x.beginPath(); x.moveTo(0, py); x.lineTo(W, py); x.stroke(); }
+    x.strokeStyle = 'rgba(110,230,170,.3)'; x.beginPath(); x.moveTo(0, H / 2); x.lineTo(W, H / 2); x.moveTo(W / 2, 0); x.lineTo(W / 2, H); x.stroke();
+    if (!frame || !frame.ch1) return;
+    const vdiv = state.scopeVdiv || 0.5, n = frame.ch1.length, divH = H / rows;
+    x.strokeStyle = '#34f5a0'; x.lineWidth = 2; x.shadowColor = '#34f5a0'; x.shadowBlur = 9; x.beginPath();
+    for (let i = 0; i < n; i++) { const px = i / (n - 1) * W; const py = H / 2 - frame.ch1[i] / vdiv * divH; i ? x.lineTo(px, py) : x.moveTo(px, py); }
+    x.stroke(); x.shadowBlur = 0;
+    const rd = el('scopeRead'); if (rd) rd.textContent = `${(frame.span * 1000).toFixed(2)} ms window · ${vdiv} V/div`;
+  },
+  async viewSiggen(c) {
+    if (!state.siggen) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.siggenLoad(); return; }
+    const s = state.siggen, waves = ['sine', 'square', 'triangle', 'sawtooth', 'dc'];
+    c.innerHTML = `<div class="instr siggen">
+      <div class="instr-head">${svg('siggen')} Signal Generator</div>
+      <div class="scope-screen sg-prev"><canvas id="sgPrev"></canvas></div>
+      <div class="sg-waves">${waves.map(w => `<button class="${w === s.waveform ? 'primary' : ''}" onclick="ui.siggenSet({waveform:'${w}'})">${w}</button>`).join('')}</div>
+      <div class="sg-row"><label>Frequency<div class="sg-in"><input id="sgFreq" type="number" value="${s.freq_hz}" onchange="ui.siggenSet({freq_hz:+this.value})"><span>Hz</span></div></label>
+        <label>Amplitude<div class="sg-in"><input type="number" step="0.1" value="${s.amp_vpp}" onchange="ui.siggenSet({amp_vpp:+this.value})"><span>Vpp</span></div></label></div>
+      <div class="sg-row"><label>Offset<div class="sg-in"><input type="number" step="0.1" value="${s.offset_v}" onchange="ui.siggenSet({offset_v:+this.value})"><span>V</span></div></label>
+        <label>Duty<div class="sg-in"><input type="number" step="0.05" min="0.05" max="0.95" value="${s.duty}" onchange="ui.siggenSet({duty:+this.value})" ${s.waveform === 'square' ? '' : 'disabled'}><span></span></div></label></div>
+      <button class="${s.enabled ? 'danger' : 'primary'}" style="width:100%;margin-top:10px" onclick="ui.siggenSet({enabled:${s.enabled ? 'false' : 'true'}})">${s.enabled ? 'Output ON — click to disable' : 'Output OFF — click to enable'}</button>
+      <div class="muted" style="font-size:11px;margin-top:6px">Open the <b>Oscilloscope</b> to see this signal render live.</div></div>`;
+    this.siggenPreview();
+  },
+  async siggenLoad() { try { state.siggen = await api.get('/api/instr/siggen'); } catch { state.siggen = { waveform: 'sine', freq_hz: 1000, amp_vpp: 2, offset_v: 0, duty: 0.5, enabled: true }; } rerenderView('siggen'); },
+  async siggenSet(patch) { try { state.siggen = await api.send('/api/instr/siggen', 'POST', patch); rerenderView('siggen'); } catch (e) { alert(e.message); } },
+  siggenPreview() {
+    const cv = el('sgPrev'); if (!cv || !state.siggen) return; const wrap = cv.parentElement; const dpr = devicePixelRatio || 1;
+    const W = wrap.clientWidth, H = wrap.clientHeight; if (!W || !H) return;
+    cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    const x = cv.getContext('2d'); x.scale(dpr, dpr); x.clearRect(0, 0, W, H);
+    x.strokeStyle = 'rgba(110,230,170,.18)'; x.beginPath(); x.moveTo(0, H / 2); x.lineTo(W, H / 2); x.stroke();
+    const s = state.siggen, cycles = 3, scale = Math.max(1, s.amp_vpp / 2 + Math.abs(s.offset_v) + 0.4);
+    x.strokeStyle = '#34d399'; x.lineWidth = 2; x.shadowColor = '#34d399'; x.shadowBlur = 7; x.beginPath();
+    for (let i = 0; i <= W; i++) { const frac = (i / W * cycles) % 1; let v;
+      if (s.waveform === 'sine') v = Math.sin(2 * Math.PI * frac); else if (s.waveform === 'square') v = frac < s.duty ? 1 : -1; else if (s.waveform === 'triangle') v = frac < 0.5 ? 4 * frac - 1 : 3 - 4 * frac; else if (s.waveform === 'sawtooth') v = 2 * frac - 1; else v = 0;
+      const vv = s.enabled ? (s.offset_v + (s.amp_vpp / 2) * v) : 0; const py = H / 2 - vv / scale * (H / 2 - 8);
+      i ? x.lineTo(i, py) : x.moveTo(i, py); }
+    x.stroke(); x.shadowBlur = 0;
   },
 
   // ---------- guided repair triage ----------

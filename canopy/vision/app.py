@@ -23,6 +23,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from canopy.hal.instruments import InstrumentHub
 from canopy.profiles import generate as profile_generate
 from canopy.profiles.schema import ModuleProfile
 from canopy.vision import auth, extract
@@ -105,6 +106,19 @@ class PingBody(BaseModel):
 
 class RestbusBody(BaseModel):
     messages: list[str] = []  # subset of DBC message names; empty = all periodic
+
+
+class InstrConnectBody(BaseModel):
+    port: str = ""  # serial port; empty = use the simulated mock bench
+
+
+class SigGenBody(BaseModel):
+    waveform: str | None = None
+    freq_hz: float | None = None
+    amp_vpp: float | None = None
+    offset_v: float | None = None
+    duty: float | None = None
+    enabled: bool | None = None
 
 
 class ResearchBody(BaseModel):
@@ -1011,6 +1025,43 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         if a is None:
             raise HTTPException(404, "no such article")
         return {"slug": a.slug, "title": a.title, "tags": a.tags, "body": a.body}
+
+    # --- bench instruments (DMM / scope / signal generator) --------------------
+    instruments = InstrumentHub()
+
+    @app.get("/api/instr/status")
+    def instr_status() -> dict:
+        return instruments.status()
+
+    @app.post("/api/instr/connect")
+    def instr_connect(body: InstrConnectBody) -> dict:
+        return instruments.connect(body.port or None)
+
+    @app.get("/api/instr/dmm")
+    def instr_dmm(mode: str = "vdc") -> dict:
+        return instruments.dmm(mode)
+
+    @app.get("/api/instr/siggen")
+    def instr_siggen_get() -> dict:
+        return instruments.get_siggen()
+
+    @app.post("/api/instr/siggen")
+    def instr_siggen_set(body: SigGenBody) -> dict:
+        return instruments.set_siggen(**body.model_dump(exclude_none=True))
+
+    @app.get("/api/instr/scope/stream")
+    def instr_scope_stream(timebase: float = 0.001, samples: int = 480) -> StreamingResponse:
+        samples = max(64, min(2000, samples))
+
+        def gen():
+            frame = 0
+            while True:
+                frame += 1
+                fr = instruments.scope_frame(timebase, samples, frame)
+                yield f"data: {json.dumps(fr)}\n\n"
+                time.sleep(0.04)  # ~25 fps
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
 
     # --- USB-to-CAN bench ------------------------------------------------------
     bench = benchmod.BenchManager()
