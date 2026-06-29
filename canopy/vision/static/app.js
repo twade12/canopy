@@ -17,6 +17,7 @@ const ICON = {
   upload: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', warn: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
   edit: '<path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M13 5l4 4"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  annotations: '<rect x="3" y="4" width="13" height="13" rx="2"/><circle cx="7" cy="8" r="1.4"/><path d="M3.5 14l3.5-3.5 3 3"/><path d="M14 9l5-5 2.2 2.2-5 5-2.7.5z"/>',
   arrow: '<path d="M5 19L19 5M19 5h-7M19 5v7"/>',
   expand: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>', compress: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
   book: '<path d="M5 4h11a2 2 0 012 2v14H7a2 2 0 00-2 2z"/><path d="M9 4v14"/>',
@@ -42,6 +43,7 @@ const VIEWS = [
   { key: 'plan', label: 'Wiring Plan', icon: 'plan' }, { key: 'chat', label: 'Chat', icon: 'chat' },
   { key: 'guided', label: 'Guided', icon: 'guide' },
   { key: 'triage', label: 'Triage', icon: 'triage' }, { key: 'pcb', label: 'PCB', icon: 'chip' },
+  { key: 'annotations', label: 'Annotations', icon: 'annotations' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
   { key: 'profile', label: 'Profile', icon: 'cab' }, { key: 'wiki', label: 'Wiki', icon: 'record' },
   { key: 'assistant', label: 'Sage', icon: 'leaf' }, { key: 'bench', label: 'Bench', icon: 'bench' },
@@ -180,7 +182,7 @@ function defaultDock() { state.gid = 1; const g = () => state.gid++;
     { t: 'g', id: g(), tabs: ['diagram'], active: 'diagram' },
     { t: 's', dir: 'col', sizes: [58, 42], kids: [
       { t: 'g', id: g(), tabs: ['pinout', 'record'], active: 'pinout' },
-      { t: 'g', id: g(), tabs: ['triage', 'pcb', 'chat', 'plan', 'memories', 'api'], active: 'triage' }] }] }; }
+      { t: 'g', id: g(), tabs: ['triage', 'pcb', 'chat', 'plan', 'annotations', 'memories', 'api'], active: 'triage' }] }] }; }
 // Dock layout is per-tab (sessionStorage) so multiple CANOPY tabs don't clobber each other;
 // localStorage holds the last layout only as a seed for newly opened tabs.
 function saveDock() { try { const s = JSON.stringify(state.dock); sessionStorage.setItem('canopy-dock', s); localStorage.setItem('canopy-dock', s); } catch {} }
@@ -341,8 +343,9 @@ const anno = {
     this.strokes.forEach(s => this._draw(ctx, s, W, H, scale));
     try { const note = (el('lbCap') || {}).value || '';
       const r = await api.send(`/api/vehicles/${state.current.id}/annotation`, 'POST', { image: cv.toDataURL('image/png'), note: note.trim() });
-      if (st) st.textContent = 'Saved to project attachments'; aiToast.done('Annotation saved');
+      if (st) st.textContent = 'Saved to the Annotations tab'; aiToast.done('Annotation saved');
       const cap = el('lbSaveCap'); if (cap) cap.setAttribute('onclick', `ui.saveCaption(${r.id})`);
+      ensureView('annotations');  // collect it into the Annotations gallery (visible when the lightbox closes)
     } catch (e) { if (st) st.textContent = ''; alert(e.message); }
   },
 };
@@ -353,7 +356,7 @@ function renderViewInto(view, c) {
   const globals = { cockpit: ui.viewCockpit, api: ui.viewApi, assistant: ui.viewAssistant, bench: ui.viewBench, research: ui.viewResearch, knowledge: ui.viewKnowledge, products: ui.viewProducts, dmm: ui.viewDmm, scope: ui.viewScope, siggen: ui.viewSiggen };
   if (globals[view]) { globals[view].call(ui, c); viewIn(c); return; }
   if (!state.current) { c.innerHTML = '<div class="empty">Select or create a project on the left.</div>'; viewIn(c); return; }
-  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, record: ui.viewRecord, wiki: ui.viewWiki, guided: ui.viewGuided, profile: ui.viewProfile })[view].call(ui, c);
+  ({ diagram: ui.viewDiagram, pinout: ui.viewPinout, plan: ui.viewPlan, chat: ui.viewChat, triage: ui.viewTriage, pcb: ui.viewPcb, memories: ui.viewMemories, annotations: ui.viewAnnotations, record: ui.viewRecord, wiki: ui.viewWiki, guided: ui.viewGuided, profile: ui.viewProfile })[view].call(ui, c);
   viewIn(c);
 }
 
@@ -481,7 +484,7 @@ const ui = {
       <label class="field"><span>Label</span><input id="f_label" value="${esc(v.label || '')}" placeholder="e.g. 2016 F-250 PCM"></label>
       <div class="row"><label class="field" style="flex:2"><span>VIN</span><input id="f_vin" value="${esc(v.vin || '')}"></label><label class="field"><span>Year</span><input id="f_year" value="${esc(v.year || '')}"></label></div>
       <div class="row"><label class="field" style="flex:1"><span>Make</span><input id="f_make" value="${esc(v.make || '')}"></label><label class="field" style="flex:1"><span>Model</span><input id="f_model" value="${esc(v.model || '')}"></label></div>
-      <div class="row" style="margin-bottom:14px"><button class="primary" onclick="ui.saveVehicle()">Save</button><button onclick="ui.identify()">Identify from diagram</button><button onclick="ui.promoteProduct()">${svg('catalog')} Promote to Product</button><button class="ghost danger" onclick="ui.deleteVehicle()">Delete</button></div>`;
+      <div class="row" style="margin-bottom:14px"><button class="primary" onclick="ui.saveVehicle()">Save</button><button onclick="ui.identify()">Identify from diagram</button><button onclick="ui.openView('annotations')">${svg('annotations')} Annotations</button><button onclick="ui.promoteProduct()">${svg('catalog')} Promote to Product</button><button class="ghost danger" onclick="ui.deleteVehicle()">Delete</button></div>`;
     this.loadProductMatch();
     c.innerHTML += `
       <h3 class="sec">Tags</h3><div class="tags" style="margin-bottom:10px">${(v.tags || []).map(t => `<span class="tagchip rm" onclick="ui.removeTag('${esc(t).replace(/'/g, "")}')">${esc(t)} ✕</span>`).join('') || '<span class="muted">No tags.</span>'}</div>
@@ -1251,8 +1254,39 @@ const ui = {
     const i = el('lbCap'); if (!i) return; const btn = el('lbSaveCap');
     if (att == null) { alert('Save the annotated image first (creates a record to caption).'); return; }
     if (btn) btn.textContent = 'Saving…';
-    try { await api.send(`/api/attachment/${att}`, 'PATCH', { note: i.value.trim() }); if (btn) btn.textContent = 'Saved'; aiToast.done('Caption saved'); }
+    try { await api.send(`/api/attachment/${att}`, 'PATCH', { note: i.value.trim() }); if (btn) btn.textContent = 'Saved'; aiToast.done('Caption saved'); rerenderView('annotations'); }
     catch (e) { if (btn) btn.textContent = 'Save caption'; alert(e.message); }
+  },
+
+  // ---------- annotated photos gallery (markup that flows into the wiki) ----------
+  viewAnnotations(c) {
+    c.innerHTML = `<div class="row" style="margin-bottom:10px;align-items:baseline">
+        <h3 class="sec" style="margin:0">Annotated photos</h3>
+        <span class="muted" style="font-size:11px">Open any image (diagram or board), click to expand, mark it with <b>Draw / Arrow / Box</b>, add a caption and <b>Save annotated</b> — they collect here and flow into the Wiki.</span></div>
+      <div id="annoGal" class="anno-gal"><div class="empty"><span class="spinner"></span></div></div>`;
+    this.loadAnnotations();
+  },
+  async loadAnnotations() {
+    const gal = el('annoGal'); if (!gal || !state.current) return;
+    let list = [];
+    try { list = await api.get(`/api/vehicles/${state.current.id}/attachments`); } catch { list = []; }
+    const annos = (list || []).filter(a => a.kind === 'annotation');
+    if (!annos.length) { gal.innerHTML = '<div class="empty">No annotated photos yet. Open a diagram or board image, click to expand, then use <b>Draw / Arrow / Box</b> and <b>Save annotated</b>.</div>'; return; }
+    gal.innerHTML = annos.map(a => `<div class="anno-card">
+        <img src="/api/attachment/${a.id}/image" loading="lazy" title="Click to view / re-annotate" onclick="ui.lightbox('/api/attachment/${a.id}/image')">
+        <div class="anno-cap"><input id="annoCap-${a.id}" value="${esc(a.note || '')}" placeholder="Add a caption for the wiki…" onkeydown="if(event.key==='Enter')ui.annoCaption(${a.id})" onblur="ui.annoCaption(${a.id}, true)"></div>
+        <div class="anno-act"><button class="ghost" onclick="ui.lightbox('/api/attachment/${a.id}/image')">${svg('edit')} View</button><button class="ghost danger" onclick="ui.annoDelete(${a.id})">${svg('trash')} Delete</button></div>
+      </div>`).join('');
+  },
+  async annoCaption(id, quiet) {
+    const i = el('annoCap-' + id); if (!i) return;
+    try { await api.send(`/api/attachment/${id}`, 'PATCH', { note: i.value.trim() }); if (!quiet) aiToast.done('Caption saved'); }
+    catch (e) { if (!quiet) alert(e.message); }
+  },
+  async annoDelete(id) {
+    if (!confirm('Delete this annotated photo? It will also disappear from the wiki.')) return;
+    try { await api.send(`/api/attachment/${id}`, 'DELETE'); this.loadAnnotations(); }
+    catch (e) { alert(e.message); }
   },
   selectPcb(i) { if (state.pcbDragged) { state.pcbDragged = false; return; }  // ignore click after a box drag
     state.pcbSel = state.pcbSel === i ? null : i; rerenderView('pcb'); },

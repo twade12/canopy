@@ -633,6 +633,11 @@ class PgStore:
         return self._one(
             "UPDATE attachment SET note = %s WHERE id = %s RETURNING *", (note, attachment_id))
 
+    def delete_attachment(self, attachment_id: int) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM pcb_component WHERE attachment_id = %s", (attachment_id,))
+            cur.execute("DELETE FROM attachment WHERE id = %s", (attachment_id,))
+
     # --- PCB components (boxed parts + user corrections) ---
     @staticmethod
     def _pcb_row(row: dict) -> dict:

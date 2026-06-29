@@ -598,6 +598,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .acc-row span { flex: 1; font-size: 13px; }
 .acc-row select { width: 150px; flex: none; }
 
+/* annotated-photo gallery */
+.anno-gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.anno-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel); display: flex; flex-direction: column; }
+.anno-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; cursor: zoom-in; background: var(--panel-2); display: block; transition: opacity .12s; }
+.anno-card img:hover { opacity: .9; }
+.anno-cap { padding: 7px 8px 4px; }
+.anno-cap input { font-size: 12.5px; padding: 6px 8px; }
+.anno-act { display: flex; gap: 4px; padding: 4px 8px 8px; }
+.anno-act button { font-size: 11.5px; padding: 4px 8px; }
+
 /* organization bubble stage */
 .org-stage { position: relative; margin-top: 16px; height: min(60vh, 560px); border: 1px solid var(--border);
   border-radius: 14px; overflow: hidden; background:

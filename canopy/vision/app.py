@@ -1351,6 +1351,18 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             raise HTTPException(404, "not found")
         return {"id": row["id"], "kind": row["kind"], "note": row["note"] or ""}
 
+    @app.delete("/api/attachment/{attachment_id}")
+    def attachment_delete(attachment_id: int) -> dict:
+        row = store.get_attachment(attachment_id)
+        if not row:
+            raise HTTPException(404, "not found")
+        store.delete_attachment(attachment_id)
+        try:
+            Path(row["path"]).unlink(missing_ok=True)  # best-effort file cleanup
+        except OSError:
+            pass
+        return {"ok": True}
+
     # --- phone pairing (snap board photos straight into a project) -------------
     @app.get("/api/vehicles/{vehicle_id}/pair")
     def pair(vehicle_id: int, request: Request) -> dict:

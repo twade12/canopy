@@ -730,6 +730,11 @@ class Store:
         self._conn.commit()
         return self.get_attachment(attachment_id)
 
+    def delete_attachment(self, attachment_id: int) -> None:
+        self._conn.execute("DELETE FROM pcb_component WHERE attachment_id = ?", (attachment_id,))
+        self._conn.execute("DELETE FROM attachment WHERE id = ?", (attachment_id,))
+        self._conn.commit()
+
     # --- PCB components (boxed parts + user corrections) ---
     @staticmethod
     def _pcb_row(row: sqlite3.Row) -> dict:
