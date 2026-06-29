@@ -17,10 +17,26 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
+from canopy import obd
 from canopy.config import CanConfig
+from canopy.hal import capture, seedkey
+from canopy.hal import commands as cmdmod
 from canopy.hal.can_iface import CanInterface
 from canopy.hal.isotp import make_can_stack
 from canopy.vision.restbus import RestbusSimulator
+
+
+def _parse_hex(v, default: int = 0) -> int:
+    if v is None or v == "":
+        return default
+    if isinstance(v, int):
+        return v
+    return int(str(v), 16) if str(v).lower().startswith("0x") else int(str(v), 16)
+
+
+def _hexbytes(s) -> bytes:
+    s = (s or "").replace("0x", "").replace(" ", "")
+    return bytes.fromhex(s) if s else b""
 
 
 def dtc_to_str(b0: int, b1: int, b2: int) -> str:
@@ -213,3 +229,88 @@ class BenchManager:
             if len(raw) >= 3 and raw[0] == 0x59:
                 results["dtc_count"] = max(0, (len(raw) - 3) // 4)
         return results
+
+    # --- OBD-II live data (standardized, zero reverse-engineering) -------------
+    def obd_read(self, pids: list[int], request_id: int = 0x7E0,
+                 response_id: int = 0x7E8) -> list[dict]:
+        out = []
+        for pid in pids:
+            spec = obd.PIDS.get(pid)
+            if not spec:
+                continue
+            r = self.uds_request(request_id, response_id, obd.build_request(pid), timeout=1.2)
+            resp = bytes.fromhex(r["response"].replace(" ", "")) if r.get("response") else b""
+            out.append({"pid": f"0x{pid:02X}", "name": spec.name, "unit": spec.unit,
+                        "value": obd.parse_response(pid, resp)})
+        return out
+
+    # --- learn by observation (capture -> diff -> propose a labeled command) ----
+    def capture_mark(self) -> int:
+        """Snapshot the frame counter; trigger the function, then call capture_diff()."""
+        return self._seq
+
+    def capture_diff(self, since: int, request_id: int, response_id: int) -> dict | None:
+        frames = [(int(f["id"], 16), bytes.fromhex(f["data"].replace(" ", "")))
+                  for f in self.recent_frames(since)]
+        return capture.propose_command(frames, request_id, response_id)
+
+    # --- run a command (raw / dbc / uds actuation), the unified executor -------
+    def run_command(self, spec: dict, *, key_algo: str = "") -> dict:
+        kind = spec.get("kind", "raw")
+        rid = _parse_hex(spec.get("request_id"), 0x7E0)
+        rsp = _parse_hex(spec.get("response_id"), 0x7E8)
+
+        if kind == "raw":
+            arb = _parse_hex(spec.get("arbitration_id"), 0)
+            data = _hexbytes(spec.get("data_hex"))
+            self.send_frame(arb, data, extended=bool(spec.get("is_fd")) and arb > 0x7FF)
+            return {"positive": True, "summary": f"sent 0x{arb:X} [{data.hex(' ')}]",
+                    "response_hex": ""}
+        if kind == "dbc":
+            if self.restbus.db is None:
+                return {"positive": False, "summary": "no DBC loaded", "response_hex": ""}
+            arb, data, ext, is_fd = cmdmod.encode_signal_frame(
+                self.restbus.db, spec.get("message", ""), spec.get("signals", {}))
+            self.send_frame(arb, data, extended=ext)
+            return {"positive": True, "summary": f"sent {spec.get('message')} [{data.hex(' ')}]",
+                    "response_hex": ""}
+
+        # UDS kinds — enter session / unlock security first if required
+        req = spec.get("requires", {}) or {}
+        if req.get("session", 1) != 1 or req.get("security_level", 0):
+            session = int(req.get("session", 3))
+            self.uds_request(rid, rsp, cmdmod.build_session(session), timeout=1.5)
+        if req.get("security_level", 0):
+            self._unlock(rid, rsp, int(req["security_level"]), key_algo)
+
+        did = _parse_hex(spec.get("did"), 0)
+        val = _hexbytes(spec.get("value_hex"))
+        if kind == "uds_io":
+            payload = cmdmod.build_io_control(did, spec.get("control") or "short_term_adjust", val)
+        elif kind == "uds_routine":
+            payload = cmdmod.build_routine(did, spec.get("control") or "start", val)
+        elif kind == "uds_write":
+            payload = cmdmod.build_write_did(did, val)
+        elif kind == "uds_read":
+            payload = cmdmod.build_read_did(did)
+        else:
+            return {"positive": False, "summary": f"unknown kind {kind}", "response_hex": ""}
+
+        r = self.uds_request(rid, rsp, payload, timeout=2.5)
+        resp = bytes.fromhex(r["response"].replace(" ", "")) if r.get("response") else b""
+        res = cmdmod.parse_uds_response(payload, resp)
+        return {"positive": res.positive, "service": f"0x{res.service:02X}",
+                "summary": str(res), "response_hex": res.hex,
+                "nrc_name": res.nrc_name}
+
+    def _unlock(self, rid: int, rsp: int, level: int, key_algo: str) -> dict:
+        seed_r = self.uds_request(rid, rsp, cmdmod.build_security_request_seed(level), timeout=1.5)
+        raw = bytes.fromhex(seed_r["response"].replace(" ", "")) if seed_r.get("response") else b""
+        if len(raw) < 2 or raw[0] != 0x67:
+            return {"positive": False, "summary": "seed request failed"}
+        seed = raw[2:]
+        fn = seedkey.get(key_algo) if key_algo else None
+        key = fn(seed) if fn else seed
+        key_r = self.uds_request(rid, rsp, cmdmod.build_security_send_key(level, key), timeout=1.5)
+        ok = bool(key_r.get("ok"))
+        return {"positive": ok, "summary": "unlocked" if ok else "invalid key"}

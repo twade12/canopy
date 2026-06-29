@@ -26,6 +26,8 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from canopy import obd
+from canopy.hal import seedkey
 from canopy.hal.instruments import InstrumentHub
 from canopy.profiles import generate as profile_generate
 from canopy.profiles.schema import ModuleProfile
@@ -133,6 +135,34 @@ class PingBody(BaseModel):
 
 class RestbusBody(BaseModel):
     messages: list[str] = []  # subset of DBC message names; empty = all periodic
+
+
+class ObdBody(BaseModel):
+    pids: list[int] = []      # empty = the whole catalog
+    request_id: str = "0x7E0"
+    response_id: str = "0x7E8"
+
+
+class CommandBody(BaseModel):
+    spec: dict                # a profile Command (or ad-hoc) — kind + payload fields
+    key_algo: str = ""        # seed/key algorithm name for security-gated actuations
+    vehicle_id: int | None = None   # if set, log the actuation into the project record
+
+
+class CaptureDiffBody(BaseModel):
+    since: int = 0
+    request_id: str = "0x7E0"
+    response_id: str = "0x7E8"
+
+
+class RunBody(BaseModel):
+    steps: list[dict] = []
+    key_algo: str = ""
+    vehicle_id: int | None = None
+
+
+class SaveCommandBody(BaseModel):
+    command: dict
 
 
 class InstrConnectBody(BaseModel):
@@ -1589,6 +1619,99 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     @app.post("/api/can/restbus/stop")
     def can_restbus_stop() -> dict:
         return bench.restbus_stop()
+
+    # --- control: OBD-II live data, actuation, learn-by-capture, verify --------
+    @app.get("/api/obd/catalog")
+    def obd_catalog() -> list[dict]:
+        return obd.catalog()
+
+    @app.get("/api/seedkey/algos")
+    def seedkey_algos() -> list[str]:
+        return seedkey.names()
+
+    @app.post("/api/can/obd")
+    def can_obd(body: ObdBody) -> dict:
+        try:
+            pids = body.pids or list(obd.PIDS)
+            return {"readings": bench.obd_read(
+                pids, _parse_id(body.request_id), _parse_id(body.response_id))}
+        except Exception as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/can/command")
+    def can_command(body: CommandBody) -> dict:
+        try:
+            res = bench.run_command(body.spec, key_algo=body.key_algo)
+        except Exception as e:
+            raise HTTPException(400, str(e)) from e
+        if body.vehicle_id:  # every actuation is logged to the project's case trail
+            name = body.spec.get("name") or body.spec.get("kind", "command")
+            store.add_memory(body.vehicle_id,
+                             f"Bench command '{name}' → {res.get('summary', '')}", kind="case")
+        return res
+
+    @app.post("/api/can/capture/mark")
+    def can_capture_mark() -> dict:
+        return {"since": bench.capture_mark()}
+
+    @app.post("/api/can/capture/diff")
+    def can_capture_diff(body: CaptureDiffBody) -> dict:
+        out = bench.capture_diff(
+            body.since, _parse_id(body.request_id), _parse_id(body.response_id))
+        return {"found": False} if out is None else {"found": True, **out}
+
+    @app.post("/api/can/run")
+    def can_run(body: RunBody) -> dict:
+        from canopy.runner import run_sequence
+        from canopy.runner.sequence import report_markdown
+
+        def execute(spec: dict) -> dict:
+            return bench.run_command(spec, key_algo=body.key_algo)
+
+        def measure(quantity: str) -> float:
+            mode = "adc" if "current" in quantity else "vdc"
+            value = instruments.dmm(mode).get("value", 0.0)
+            return value / 1000 if mode == "adc" else value   # adc is in mA -> A
+
+        results = run_sequence(body.steps, execute, measure)
+        md = report_markdown(results)
+        if body.vehicle_id:
+            store.add_memory(body.vehicle_id, md, kind="case")
+        return {"results": [r.as_dict() for r in results], "markdown": md,
+                "passed": sum(1 for r in results if r.ok), "total": len(results)}
+
+    # --- profile command catalog (labeled buttons saved on the project) --------
+    @app.get("/api/vehicles/{vehicle_id}/profile/commands")
+    def list_profile_commands(vehicle_id: int) -> list[dict]:
+        text = store.get_profile(vehicle_id) or ""
+        if not text:
+            return []
+        try:
+            return [c.model_dump() for c in ModuleProfile.from_yaml(text).commands]
+        except Exception:
+            return []
+
+    @app.post("/api/vehicles/{vehicle_id}/profile/commands")
+    def add_profile_command(vehicle_id: int, body: SaveCommandBody) -> dict:
+        from canopy.profiles.schema import Command
+
+        text = store.get_profile(vehicle_id) or ""
+        prof = ModuleProfile.from_yaml(text) if text else ModuleProfile()
+        fields = {k: v for k, v in body.command.items() if k in Command.model_fields}
+        if not fields.get("name"):
+            raise HTTPException(400, "command needs a name")
+        prof.commands.append(Command(**fields))
+        store.save_profile(vehicle_id, prof.to_yaml())
+        return {"count": len(prof.commands)}
+
+    @app.delete("/api/vehicles/{vehicle_id}/profile/commands/{index}")
+    def delete_profile_command(vehicle_id: int, index: int) -> dict:
+        text = store.get_profile(vehicle_id) or ""
+        prof = ModuleProfile.from_yaml(text) if text else ModuleProfile()
+        if 0 <= index < len(prof.commands):
+            prof.commands.pop(index)
+            store.save_profile(vehicle_id, prof.to_yaml())
+        return {"count": len(prof.commands)}
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
