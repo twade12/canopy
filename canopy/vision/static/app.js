@@ -391,12 +391,15 @@ const ui = {
     }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.streamCtrl) this.cancelStream(); });
+    // chat/triage/Sage prompt boxes grow to fit what you type (delegated so it covers every panel)
+    document.addEventListener('input', e => { if (e.target.matches && e.target.matches('.chat-input textarea')) this.autoGrow(e.target); });
     state.dock = loadDock();
     this.checkHealth(); await this.loadRecords();
     let want = null; try { want = parseInt(sessionStorage.getItem('canopy-project'), 10); } catch {}
     const pick = state.records.find(r => r.id === want) || state.records[0];
     if (pick) await this.select(pick.id); else { setTitle(); renderDock(); }
   },
+  autoGrow(t) { if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 220) + 'px'; },
   async checkHealth() { try { const h = await api.get('/api/health'); el('statusDot').className = 'dot ' + (h.model_ready ? 'ok' : 'bad'); el('statusText').textContent = h.model_ready ? h.model : (h.models.length ? h.model + ' (not pulled)' : 'Ollama offline'); } catch { el('statusDot').className = 'dot bad'; el('statusText').textContent = 'Ollama offline'; } },
 
   toggleSidebar() { state.sidebar = !state.sidebar; el('sidebar').classList.toggle('collapsed', !state.sidebar); },
@@ -742,9 +745,9 @@ const ui = {
       <div class="chat-input"><textarea id="aIn" placeholder="Ask across all projects…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ui.sendAssistant();}"></textarea><button class="primary" onclick="ui.sendAssistant()">Send</button></div></div>`;
     const m = el('aMsgs'); if (m) m.scrollTop = m.scrollHeight;
   },
-  askAssistant(q) { ensureView('assistant'); const i = el('aIn'); if (i) i.value = q; this.sendAssistant(q); },
+  askAssistant(q) { ensureView('assistant'); const i = el('aIn'); if (i) { i.value = q; this.autoGrow(i); } this.sendAssistant(q); },
   async sendAssistant(forced) {
-    const input = el('aIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q) return; if (input) input.value = '';
+    const input = el('aIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q) return; if (input) { input.value = ''; this.autoGrow(input); }
     state.assistantMsgs = state.assistantMsgs || [];
     const box = el('aMsgs'); if (box && box.querySelector('.empty')) box.innerHTML = '';
     box.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div></div>`);
@@ -1062,7 +1065,7 @@ const ui = {
   },
   async loadTriage() { try { state.triageMsgs = await api.get(`/api/vehicles/${state.current.id}/triage/messages`); } catch { state.triageMsgs = []; } rerenderView('triage'); },
   renderTriageMsgs() { const box = el('tMsgs'); if (!box) return; const msgs = state.triageMsgs || []; box.innerHTML = msgs.map(m => `<div class="msg ${m.role}"><div class="md">${md(m.content)}</div></div>`).join('') || '<div class="empty">Start a guided triage — describe the symptom or attach a board photo.</div>'; box.scrollTop = box.scrollHeight; },
-  fillTriage(q) { ensureView('triage'); const i = el('tIn'); if (i) { i.value = q; i.focus(); } },
+  fillTriage(q) { ensureView('triage'); const i = el('tIn'); if (i) { i.value = q; this.autoGrow(i); i.focus(); } },
   askTriage(q) { ensureView('triage'); this.sendTriage(q); },
   attachTriagePhoto() {
     if (!state.triageFileInput) { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
@@ -1071,7 +1074,7 @@ const ui = {
     state.triageFileInput.value = ''; state.triageFileInput.click();
   },
   async sendTriage(forced) {
-    const input = el('tIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q || !state.current) return; if (input) input.value = '';
+    const input = el('tIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q || !state.current) return; if (input) { input.value = ''; this.autoGrow(input); }
     const box = el('tMsgs'); if (box && box.querySelector('.empty')) box.innerHTML = '';
     const img = state.triageImage; state.triageImage = null; const a = el('tAttach'); if (a) a.textContent = '';
     // Keep the photo in the message content so it survives tab moves; the server re-embeds it
@@ -1523,8 +1526,8 @@ const ui = {
   async refreshMemories() { state.current.memories = await api.get(`/api/vehicles/${state.current.id}/memories`); rerenderView('memories'); },
 
   // ---------- chat streaming ----------
-  ask(q) { ensureView('chat'); const i = el('chatIn'); if (i) i.value = q; this.send(q); },
-  async send(forced) { const input = el('chatIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q || !state.current) return; if (input) input.value = '';
+  ask(q) { ensureView('chat'); const i = el('chatIn'); if (i) { i.value = q; this.autoGrow(i); } this.send(q); },
+  async send(forced) { const input = el('chatIn'); const q = (forced || (input ? input.value : '')).trim(); if (!q || !state.current) return; if (input) { input.value = ''; this.autoGrow(input); }
     const auto = el('autoMem') ? el('autoMem').checked : true; if (!el('msgs')) ensureView('chat'); const msgs = el('msgs');
     msgs.insertAdjacentHTML('beforeend', `<div class="msg user"><div class="md">${md(q)}</div></div>`);
     const aId = 'a' + Date.now(); msgs.insertAdjacentHTML('beforeend', `<div class="msg assistant" id="${aId}"><div class="thinking"><span class="spinner"></span> thinking…</div><div class="md cursor-blink" id="${aId}-md"></div></div>`); msgs.scrollTop = msgs.scrollHeight;
