@@ -370,11 +370,13 @@ const ui = {
     const adb = el('adminBtn'); if (adb) adb.innerHTML = svg('gear');
     ['dmm:gauge', 'scope:scope', 'siggen:siggen'].forEach(p => { const [id, ic] = p.split(':'); const b = el(id + 'Btn'); if (b) b.innerHTML = svg(ic); });
     api.get('/api/auth/status').then(s => {
-      const u = s.user || {}; state.user = u;
+      const u = s.user || {}; state.user = u; state.team = s.team || null;
       if (s.auth) el('logoutBtn').classList.remove('hidden');
       const b = el('userBadge');
       if (b && s.auth) { b.classList.remove('hidden');
-        b.innerHTML = `<span class="ub-name">${esc(u.username || '')}</span><span class="ub-role ${esc(u.role)}">${u.role === 'admin' ? 'Admin' : 'Member'}</span>`; }
+        const t = s.team;
+        b.title = `${u.username}${u.role === 'admin' ? ' · Admin' : ' · Member'}${t ? ' · Team: ' + t.name : ''}`;
+        b.innerHTML = `${t ? `<span class="ub-team" style="--tc:${esc(t.color)}" title="Team: ${esc(t.name)}"><i></i><b>${esc(t.name)}</b></span>` : ''}<span class="ub-name">${esc(u.username || '')}</span><span class="ub-role ${esc(u.role)}">${u.role === 'admin' ? 'Admin' : 'Member'}</span>`; }
       const adb = el('adminBtn'); if (adb && u.role === 'admin') adb.classList.remove('hidden');  // admin console is admin-only
     }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
@@ -486,17 +488,22 @@ const ui = {
       <div class="chat-input"><input id="tagIn" placeholder="Add a tag (e.g. Duramax)" onkeydown="if(event.key==='Enter')ui.addTag()"><button onclick="ui.addTag()">${svg('tag')} Add</button><button onclick="ui.extractTags()" id="tagAiBtn">${svg('bolt')} AI tags</button></div>`; },
 
   // ---------- NPI cockpit (every project's pipeline readiness) ----------
+  ckCard(p) {
+    const STAGES = [['identity', 'ID'], ['diagram', 'Diagram'], ['pinout', 'Pinout'], ['pcb', 'PCB'], ['findings', 'Findings'], ['profile', 'Profile'], ['product', 'Product']];
+    const title = esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || 'Untitled');
+    const team = p.team ? `<div class="ck-teamrow"><span class="ck-team" style="--tcol:${esc(p.team.color)}"><i></i>${esc(p.team.name)}</span></div>` : '';
+    return `<div class="ck-card${p.team ? ' owned' : ''}"${p.team ? ` style="--tcol:${esc(p.team.color)}"` : ''} onclick="ui.cockpitOpen(${p.id})">
+      <div class="ck-top"><div class="ck-title">${title}</div>${p.units ? `<span class="units-badge" title="units serviced">${p.units}</span>` : ''}</div>
+      ${team}<div class="ck-bar"><span style="width:${p.progress}%"></span></div>
+      <div class="ck-stages">${STAGES.map(([k, lbl]) => `<span class="ck-st ${p.stages[k] ? 'on' : ''}" title="${lbl}">${p.stages[k] ? svg('check') : ''}<i>${lbl}</i></span>`).join('')}</div>
+      <div class="ck-next">${p.next ? `Next: <b>${esc(p.next)}</b>` : '<span class="ck-ready">' + svg('check') + ' ready to list</span>'}</div></div>`;
+  },
   viewCockpit(c) {
     if (state.cockpit == null) { c.innerHTML = '<div class="empty"><span class="spinner"></span></div>'; this.loadCockpit(); return; }
-    const STAGES = [['identity', 'ID'], ['diagram', 'Diagram'], ['pinout', 'Pinout'], ['pcb', 'PCB'], ['findings', 'Findings'], ['profile', 'Profile'], ['product', 'Product']];
     const q = (state.cockpitQ || '').toLowerCase();
     let rows = state.cockpit.filter(p => !q || [p.label, p.make, p.model, p.year, ...(p.tags || [])].join(' ').toLowerCase().includes(q));
     rows = rows.slice().sort((a, b) => b.progress - a.progress);
-    const card = p => `<div class="ck-card" onclick="ui.cockpitOpen(${p.id})">
-      <div class="ck-top"><div class="ck-title">${esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || 'Untitled')}</div>${p.units ? `<span class="units-badge" title="units serviced">${p.units}</span>` : ''}</div>
-      <div class="ck-bar"><span style="width:${p.progress}%"></span></div>
-      <div class="ck-stages">${STAGES.map(([k, lbl]) => `<span class="ck-st ${p.stages[k] ? 'on' : ''}" title="${lbl}">${p.stages[k] ? svg('check') : ''}<i>${lbl}</i></span>`).join('')}</div>
-      <div class="ck-next">${p.next ? `Next: <b>${esc(p.next)}</b>` : '<span class="ck-ready">' + svg('check') + ' ready to list</span>'}</div></div>`;
+    const card = p => this.ckCard(p);
     c.innerHTML = `<div class="ck-col">
       <div class="ck-head"><h3 class="sec" style="margin:0">NPI Cockpit</h3>
         <input id="ckQ" placeholder="Search modules…" value="${esc(state.cockpitQ || '')}" oninput="ui.cockpitSearch(this.value)" style="max-width:240px">
@@ -507,9 +514,8 @@ const ui = {
   },
   async loadCockpit(force) { if (force) state.cockpit = null; try { state.cockpit = await api.get('/api/cockpit'); } catch { state.cockpit = []; } rerenderView('cockpit'); },
   cockpitSearch(v) { state.cockpitQ = v; const g = document.querySelector('.ck-grid'); if (!g) { rerenderView('cockpit'); return; }
-    const STAGES = [['identity', 'ID'], ['diagram', 'Diagram'], ['pinout', 'Pinout'], ['pcb', 'PCB'], ['findings', 'Findings'], ['profile', 'Profile'], ['product', 'Product']];
     const q = v.toLowerCase(); const rows = state.cockpit.filter(p => !q || [p.label, p.make, p.model, p.year, ...(p.tags || [])].join(' ').toLowerCase().includes(q)).sort((a, b) => b.progress - a.progress);
-    g.innerHTML = rows.map(p => `<div class="ck-card" onclick="ui.cockpitOpen(${p.id})"><div class="ck-top"><div class="ck-title">${esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || 'Untitled')}</div>${p.units ? `<span class="units-badge">${p.units}</span>` : ''}</div><div class="ck-bar"><span style="width:${p.progress}%"></span></div><div class="ck-stages">${STAGES.map(([k, lbl]) => `<span class="ck-st ${p.stages[k] ? 'on' : ''}" title="${lbl}">${p.stages[k] ? svg('check') : ''}<i>${lbl}</i></span>`).join('')}</div><div class="ck-next">${p.next ? `Next: <b>${esc(p.next)}</b>` : '<span class="ck-ready">ready</span>'}</div></div>`).join('') || '<div class="empty">No matches.</div>';
+    g.innerHTML = rows.map(p => this.ckCard(p)).join('') || '<div class="empty">No matches.</div>';
   },
   async cockpitOpen(id) { await this.select(id); ensureView('record'); },
 

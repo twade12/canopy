@@ -370,8 +370,13 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     @app.get("/api/auth/status")
     def auth_status(request: Request) -> dict:
         u = current_user(request)
+        team = store.team_of_user(u["id"]) if u.get("id") else None
         return {"auth": not open_mode, "open_mode": open_mode,
-                "user": {"id": u["id"], "username": u["username"], "role": u["role"]}}
+                "user": {"id": u["id"], "username": u["username"], "role": u["role"]},
+                "team": _team_brief(team)}
+
+    def _team_brief(team: dict | None) -> dict | None:
+        return {"id": team["id"], "name": team["name"], "color": team["color"]} if team else None
 
     # --- user management (admin-only; enforced in middleware) ---
     def _user_public(u: dict) -> dict:
@@ -439,6 +444,28 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def orgs_delete(oid: int) -> dict:
         store.delete_org(oid)
         return {"ok": True}
+
+    def _apply_team_access(oid: int, vehicle_id: int, level: str) -> None:
+        """Grant/revoke a whole team's access to one project (and tag project ownership)."""
+        org = store.get_org(oid)
+        members = org["members"] if org else []
+        if level in (None, "", "none"):
+            for m in members:
+                store.set_access(m, vehicle_id, "none")
+            store.set_project_team(vehicle_id, None)
+        else:
+            for m in members:
+                store.set_access(m, vehicle_id, level)
+            store.set_project_team(vehicle_id, oid, level)
+
+    @app.get("/api/orgs/{oid}/access")
+    def orgs_access_get(oid: int) -> dict:
+        return store.org_access_map(oid)
+
+    @app.put("/api/orgs/{oid}/access")
+    def orgs_access_set(oid: int, body: AccessBody) -> dict:
+        _apply_team_access(oid, body.vehicle_id, body.level)
+        return store.org_access_map(oid)
     client = OllamaClient(
         config.ollama_url, config.model, timeout=config.request_timeout
     )
@@ -1068,6 +1095,8 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def cockpit(request: Request) -> list[dict]:
         u = current_user(request)
         acc = None if u["role"] == "admin" else store.access_map(u["id"])
+        pt = store.project_team_map()
+        orgs_by_id = {o["id"]: o for o in store.list_orgs()}
         out = []
         for v in store.list_vehicles():
             if acc is not None and v["id"] not in acc:
@@ -1086,12 +1115,13 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
             }
             done = sum(1 for k in _COCKPIT_STAGES if stages[k])
             nxt = next((k for k in _COCKPIT_STAGES if not stages[k]), None)
+            owner = orgs_by_id.get(pt[v["id"]]["org_id"]) if v["id"] in pt else None
             out.append({
                 "id": v["id"], "label": v.get("label", ""), "make": v.get("make", ""),
                 "model": v.get("model", ""), "year": v.get("year", ""), "tags": v.get("tags", []),
                 "stages": stages, "progress": round(done / len(_COCKPIT_STAGES) * 100),
                 "next": nxt, "units": prod["units"] if prod else None,
-                "updated_at": v.get("created_at", ""),
+                "team": _team_brief(owner), "updated_at": v.get("created_at", ""),
             })
         return out
 

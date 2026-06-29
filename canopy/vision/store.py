@@ -112,6 +112,9 @@ CREATE TABLE IF NOT EXISTS org (
 CREATE TABLE IF NOT EXISTS org_member (
     user_id INTEGER PRIMARY KEY, org_id INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_team (
+    vehicle_id INTEGER PRIMARY KEY, org_id INTEGER NOT NULL, level TEXT NOT NULL DEFAULT 'read'
+);
 CREATE TABLE IF NOT EXISTS integration (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT, kind TEXT, base_url TEXT, auth_type TEXT, config TEXT, secret TEXT,
@@ -493,7 +496,33 @@ class Store:
     def delete_org(self, oid: int) -> None:
         self._conn.execute("DELETE FROM org WHERE id = ?", (oid,))
         self._conn.execute("DELETE FROM org_member WHERE org_id = ?", (oid,))
+        self._conn.execute("DELETE FROM project_team WHERE org_id = ?", (oid,))
         self._conn.commit()
+
+    def team_of_user(self, uid: int) -> dict | None:
+        row = self._conn.execute(
+            "SELECT o.* FROM org o JOIN org_member m ON m.org_id = o.id WHERE m.user_id = ?",
+            (uid,)).fetchone()
+        return dict(row) if row else None
+
+    def set_project_team(self, vehicle_id: int, org_id: int | None, level: str = "read") -> None:
+        if org_id is None:
+            self._conn.execute("DELETE FROM project_team WHERE vehicle_id = ?", (vehicle_id,))
+        else:
+            self._conn.execute(
+                "INSERT INTO project_team (vehicle_id, org_id, level) VALUES (?,?,?) "
+                "ON CONFLICT(vehicle_id) DO UPDATE SET org_id = excluded.org_id, "
+                "level = excluded.level",
+                (vehicle_id, org_id, level))
+        self._conn.commit()
+
+    def project_team_map(self) -> dict[int, dict]:
+        return {r["vehicle_id"]: {"org_id": r["org_id"], "level": r["level"]}
+                for r in self._conn.execute("SELECT * FROM project_team").fetchall()}
+
+    def org_access_map(self, org_id: int) -> dict[int, str]:
+        return {r["vehicle_id"]: r["level"] for r in self._conn.execute(
+            "SELECT vehicle_id, level FROM project_team WHERE org_id = ?", (org_id,)).fetchall()}
 
     def assign_org(self, user_id: int, org_id: int | None) -> None:
         if org_id is None:

@@ -128,21 +128,51 @@
     }
 
     // ---- Team & access ----
-    let users = [], projects = [];
+    let users = [], projects = [], teamOrgs = [], userOrg = {};
     async function renderTeam(m) {
+      let orgs = [];
+      try { [users, projects, orgs] = await Promise.all(
+        [api.get('/api/users'), api.get('/api/vehicles'), api.get('/api/orgs')]); }
+      catch (e) { m.innerHTML = `<div class="adm-head"><h1>Team</h1></div><p class="warn">${esc(e.message)}</p>`; return; }
+      teamOrgs = orgs; userOrg = {};
+      orgs.forEach(o => o.members.forEach(uid => userOrg[uid] = o));
       m.innerHTML = `<div class="adm-head"><h1>Team</h1><button class="primary" onclick="openUser()">+ Add user</button></div>
-        <p class="muted" style="max-width:680px">One admin manages the team. Sub-users sign in with their own credentials and only see the projects they're assigned — each as <b>read-only</b> or <b>read/write</b>.</p>
-        <div id="userList" class="adm-grid"></div>`;
-      try { [users, projects] = await Promise.all([api.get('/api/users'), api.get('/api/vehicles')]); }
-      catch (e) { el('userList').innerHTML = `<p class="warn">${esc(e.message)}</p>`; return; }
-      el('userList').innerHTML = users.map(userCard).join('');
+        <p class="muted" style="max-width:700px">One admin manages the team. Sub-users sign in with their own credentials and see only the projects they're assigned — individually below, or by dropping a whole <b>team</b> onto projects. Build teams on the <a onclick="go('org')" style="color:var(--accent);cursor:pointer">Organization</a> tab.</p>
+        ${orgs.length ? `<h2 class="adm-sub">Teams</h2><div class="adm-grid">${orgs.map(teamCard).join('')}</div>` : ''}
+        <h2 class="adm-sub">People</h2>
+        <div id="userList" class="adm-grid">${users.map(userCard).join('')}</div>`;
+    }
+    function teamCard(o) {
+      const n = o.members.length;
+      return `<div class="int-card">
+        <div class="int-top"><span class="team-dot" style="background:${esc(o.color)}"></span><b>${esc(o.name)}</b><span class="int-kind">${n} member${n === 1 ? '' : 's'}</span></div>
+        <div class="int-meta">Grant this whole team access to projects at once.</div>
+        <div class="row" style="margin-top:10px"><button onclick="teamProjects(${o.id})">Assign to projects</button></div></div>`;
     }
     function userCard(u) {
-      const admin = u.role === 'admin';
+      const admin = u.role === 'admin'; const t = userOrg[u.id];
+      const chip = t ? `<span class="team-chip" style="--tc:${esc(t.color)}">${esc(t.name)}</span> · ` : '';
       return `<div class="int-card">
         <div class="int-top"><b>${esc(u.username)}</b><span class="int-kind ${admin ? 'role-admin' : ''}">${admin ? 'Admin' : 'Member'}</span></div>
-        <div class="int-meta">${admin ? 'Full access to every project &amp; the admin console.' : `${u.projects} project(s) assigned`}</div>
+        <div class="int-meta">${chip}${admin ? 'Full access to every project &amp; the admin console.' : `${u.projects} project(s) assigned`}</div>
         <div class="row" style="margin-top:10px">${admin ? '' : `<button onclick="manageAccess(${u.id})">Manage access</button>`}<button class="ghost danger" onclick="delUser(${u.id},'${esc(u.username)}')">Delete</button></div></div>`;
+    }
+    async function teamProjects(oid) {
+      const o = teamOrgs.find(x => x.id === oid); let acc = {};
+      try { acc = await api.get(`/api/orgs/${oid}/access`); } catch {}
+      const rows = projects.length ? projects.map(p => {
+        const lvl = acc[p.id] || 'none'; const opt = (v, t) => `<option value="${v}" ${lvl === v ? 'selected' : ''}>${t}</option>`;
+        return `<div class="acc-row"><span>${esc([p.year, p.make, p.model].filter(Boolean).join(' ') || p.label || ('Project ' + p.id))}</span>
+          <select onchange="setTeamAccess(${oid}, ${p.id}, this.value)">${opt('none', 'No access')}${opt('read', 'Read-only')}${opt('write', 'Read / write')}</select></div>`;
+      }).join('') : '<p class="muted">No projects yet.</p>';
+      modal(`<div class="m-head">${svg('team')} ${esc(o.name)} · project access</div>
+        <div class="m-body"><p class="muted" style="font-size:12px;margin:0 0 10px">Applies to all ${o.members.length} member(s), and marks each project as owned by <b>${esc(o.name)}</b> (color-codes it in the Cockpit).</p><div class="acc-list">${rows}</div></div>
+        <div class="m-foot"><span class="m-status" id="tStatus"></span><button class="primary" onclick="closeModal();render()">Done</button></div>`);
+    }
+    async function setTeamAccess(oid, vid, level) {
+      el('tStatus').textContent = 'Saving…';
+      try { await api.send(`/api/orgs/${oid}/access`, 'PUT', { vehicle_id: vid, level }); el('tStatus').textContent = 'Saved'; }
+      catch (e) { el('tStatus').textContent = e.message; }
     }
     function openUser() {
       modal(`<div class="m-head">${svg('team')} Add user</div>
@@ -298,7 +328,8 @@
               const d = Math.hypot(dx, dy) || 1, min = b.r + o.r + 14;
               if (d < min) { const f = (min - d) / d * 0.5; b.vx += dx * f * 0.02; b.vy += dy * f * 0.02; } }
             b.vx *= 0.9; b.vy *= 0.9; b.x += b.vx; b.y += b.vy;
-            b.x = Math.max(b.r, Math.min(this.W - b.r, b.x)); b.y = Math.max(b.r, Math.min(this.H - b.r, b.y));
+            b.x = Math.max(b.r, Math.min(this.W - b.r, b.x));
+            b.y = Math.max(b.r + 34, Math.min(this.H - b.r, b.y));  // headroom for the label above
           }
         }
         for (const t of T) {
@@ -316,12 +347,13 @@
         }
       },
       draw() {
-        for (const b of this.bubbles) { const r = Math.max(20, b.r + b.wob);
+        for (const b of this.bubbles) { const r = Math.max(20, b.r + b.wob); const top = b.y - r;
           b.circle.setAttribute('cx', b.x); b.circle.setAttribute('cy', b.y); b.circle.setAttribute('r', r);
           b.circle.setAttribute('fill-opacity', b.hover ? .2 : .12);
-          b.label.setAttribute('x', b.x); b.label.setAttribute('y', b.y - 4); b.label.textContent = b.name;
-          b.cnt.setAttribute('x', b.x); b.cnt.setAttribute('y', b.y + 16); b.cnt.textContent = b.count + (b.count === 1 ? ' member' : ' members');
-          b.del.setAttribute('x', b.x + r - 12); b.del.setAttribute('y', b.y - r + 18);
+          // labels live ABOVE the bubble so members never cover the team name
+          b.label.setAttribute('x', b.x); b.label.setAttribute('y', top - 22); b.label.textContent = b.name;
+          b.cnt.setAttribute('x', b.x); b.cnt.setAttribute('y', top - 8); b.cnt.textContent = b.count + (b.count === 1 ? ' member' : ' members');
+          b.del.setAttribute('x', b.x + r - 12); b.del.setAttribute('y', top + 18);
         }
         for (const t of this.tokens) t.g.setAttribute('transform', `translate(${t.x.toFixed(1)},${t.y.toFixed(1)})`);
       },
@@ -359,7 +391,7 @@
     window.saveInt = saveInt; window.testInt = testInt; window.delInt = delInt; window.closeModal = closeModal;
     window.openUser = openUser; window.saveUser = saveUser; window.delUser = delUser;
     window.manageAccess = manageAccess; window.setAccess = setAccess; window.render = render;
-    window.newTeam = newTeam;
+    window.newTeam = newTeam; window.teamProjects = teamProjects; window.setTeamAccess = setTeamAccess;
   </script>
 </body>
 </html>

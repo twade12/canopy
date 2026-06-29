@@ -95,6 +95,9 @@ CREATE TABLE IF NOT EXISTS org (
 CREATE TABLE IF NOT EXISTS org_member (
     user_id INTEGER PRIMARY KEY, org_id INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_team (
+    vehicle_id INTEGER PRIMARY KEY, org_id INTEGER NOT NULL, level TEXT NOT NULL DEFAULT 'read'
+);
 CREATE TABLE IF NOT EXISTS integration (
     id SERIAL PRIMARY KEY,
     name TEXT, kind TEXT, base_url TEXT, auth_type TEXT, config TEXT, secret TEXT,
@@ -423,6 +426,30 @@ class PgStore:
         with self._conn.cursor() as cur:
             cur.execute("DELETE FROM org WHERE id = %s", (oid,))
             cur.execute("DELETE FROM org_member WHERE org_id = %s", (oid,))
+            cur.execute("DELETE FROM project_team WHERE org_id = %s", (oid,))
+
+    def team_of_user(self, uid: int) -> dict | None:
+        return self._one(
+            "SELECT o.* FROM org o JOIN org_member m ON m.org_id = o.id "
+            "WHERE m.user_id = %s", (uid,))
+
+    def set_project_team(self, vehicle_id: int, org_id: int | None, level: str = "read") -> None:
+        with self._conn.cursor() as cur:
+            if org_id is None:
+                cur.execute("DELETE FROM project_team WHERE vehicle_id = %s", (vehicle_id,))
+            else:
+                cur.execute(
+                    "INSERT INTO project_team (vehicle_id, org_id, level) VALUES (%s,%s,%s) "
+                    "ON CONFLICT(vehicle_id) DO UPDATE SET org_id = excluded.org_id, "
+                    "level = excluded.level", (vehicle_id, org_id, level))
+
+    def project_team_map(self) -> dict[int, dict]:
+        return {r["vehicle_id"]: {"org_id": r["org_id"], "level": r["level"]}
+                for r in self._all("SELECT * FROM project_team")}
+
+    def org_access_map(self, org_id: int) -> dict[int, str]:
+        return {r["vehicle_id"]: r["level"] for r in self._all(
+            "SELECT vehicle_id, level FROM project_team WHERE org_id = %s", (org_id,))}
 
     def assign_org(self, user_id: int, org_id: int | None) -> None:
         with self._conn.cursor() as cur:
