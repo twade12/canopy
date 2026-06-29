@@ -1,12 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 300" width="1180" height="300"
      font-family="Inter, 'Segoe UI', -apple-system, Helvetica, Arial, sans-serif">
-  <!-- chip badge — matches the app favicon (canopy/vision/static/favicon.svg) -->
+  <!-- leaf badge — matches the app favicon + Sage's leaf (canopy/vision/static/favicon.svg) -->
   <g transform="translate(40,50) scale(6.25)">
     <rect width="32" height="32" rx="7" fill="#0f9d6b"/>
-    <g stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="10" y="10" width="12" height="12" rx="2"/>
-      <path d="M14 6v4M19 6v4M14 22v4M19 22v4M6 14h4M6 19h4M22 14h4M22 19h4"/>
-    </g>
+    <path d="M7 25C7 14 14 7 25 7c0 11-7 18-18 18z" fill="#ffffff"/>
+    <path d="M22.5 9.5C15 12.5 11 17 8 24" fill="none" stroke="#0f9d6b" stroke-width="1.7"
+          stroke-linecap="round"/>
   </g>
   <!-- wordmark + tagline -->
   <text x="288" y="175" font-size="132" font-weight="800" fill="#0f9d6b"

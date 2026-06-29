@@ -56,6 +56,69 @@ full-car-simulator design, and [docs/BATTLE-PLAN.md](docs/BATTLE-PLAN.md) for th
 
 ---
 
+## The Canopy platform — a local-first web app
+
+Alongside the CAN stack, Canopy ships a full **self-hosted web application** (FastAPI + a
+**local** Ollama multimodal model — nothing leaves the machine) that turns a bare module
+into a documented, reproducible repair and a ready-to-list product. Launch it with
+`canopy vision serve` → `http://127.0.0.1:8088`. Everything below is live today.
+
+> **Meet Sage 🍃** — Canopy's built-in AI assistant. Sage reads your wiring diagrams and
+> boards, runs the triage reasoning, drafts bench plans, pulls tags, and answers questions
+> across every project. A green leaf animates whenever Sage is working.
+
+### Onboarding & workspace
+- **Guided onboarding wizard** — a TurboTax-style flow for a new module: *identify → wiring
+  diagram (→ auto pinout + tags) → board photo (→ auto component ID) → symptom → review*,
+  then drops you into a fully-populated workspace. Sage narrates each step with a live,
+  data-aware prompt.
+- **NPI Cockpit** — a dashboard of every project's pipeline readiness across seven stages
+  (identity, diagram, pinout, PCB, findings, profile, product) with a progress bar and the
+  next action — your "ready to list" board.
+- **Dockable, VS Code-style UI** — drag tabs into split panes, per-tab saved layouts,
+  light/dark, premium motion.
+
+### Reverse-engineering & diagnosis
+- **Wiring diagram → pinout** (image or multi-page PDF), editable and validated against any
+  existing profile.
+- **Board photo → components** — boxed, identified parts with part markings and failure-mode
+  notes; fully correctable, multi-photo.
+- **Triage** — grounded, symptom-driven fault reasoning over the extracted data.
+- **Guided walkthrough** — a physics-first diagnostic procedure that streams its reasoning.
+- **CAN Bench** — probe a live ECU (restbus + UDS) straight from the browser.
+- **Knowledge base** (33 house articles), **per-project memories**, one-click **wiki export**
+  (markdown), and **phone capture** for snapping diagrams/boards from a paired phone.
+
+### Instruments — real or simulated
+- **Multimeter, oscilloscope, and signal generator** with traditional dials, triggers, and
+  coupling controls — driven over **PyVISA / SCPI** or serial, with a mock backend so the
+  whole suite works with no hardware. Live readings **record into the project** for auditable
+  repair documentation.
+
+### Reuse & throughput
+- **Product Library** — promote a finished project to a reusable **SKU** (profile + wiki +
+  BOM + resolved cases); the next identical module matches instantly to collapse cycle time.
+- **Module Profiles** — the **CAB (Car-in-a-Box)** seam: a diagram/PCB auto-drafts the YAML
+  profile that the 10-slot HIL bench executes, gated by confirm-before-energize.
+
+### Administration — the `/admin` console (admin-only)
+- **Users & roles** — one **Admin** plus sub-users, each with **per-project read-only or
+  read/write** access. Sign-in is per-user (salted PBKDF2); the topbar shows who you are and
+  hides the console from non-admins.
+- **Integrations** — push Canopy's outputs to **Slack, Google Drive, Monday.com, Digi-Key,
+  Mouser, WordPress, Dropbox**, or any service via a **generic REST connector** (base URL +
+  auth method) — extensible without per-service code; secrets are stored locally and masked.
+
+### Performance & data
+- gzip + ETag/304 caching, a stale-while-revalidate client cache, DB indexes, model
+  warm-up, and a repeatable **benchmark harness** (`scripts/bench.py`). **SQLite** by
+  default; **Postgres + pgvector** optional. Deploy with systemd + nginx and per-user login.
+
+See [docs/AI-VISION.md](docs/AI-VISION.md) for the full platform tour and
+[docs/QUICKSTART.md](docs/QUICKSTART.md) for a new-user walkthrough of the tabs.
+
+---
+
 ## The "Universal Interface" — three layers, not one connector
 
 ```
@@ -86,10 +149,10 @@ virtual bus today.**
 | [`canopy/sim/`](canopy/sim/) | **Virtual vehicle**: periodic restbus scheduler, **E2E** rolling alive-counter + checksum (`crc8_j1850`/`sum8`/`xor8`), network management, per-ECU **UDS server**, YAML/DBC loader. |
 | [`canopy/hal/isotp.py`](canopy/hal/isotp.py) · [`hal/uds.py`](canopy/hal/uds.py) | ISO-TP transport + `udsoncan` **tester client** (session, VIN, read/clear DTC). |
 | [`canopy/data/`](canopy/data/) | SQLAlchemy models for `Module/Adapter/TestRun/Observation/SymptomVector/Case` (portable now, Postgres+Timescale+pgvector in Phase 1). |
-| [`canopy/vision/`](canopy/vision/) | **Local AI wiring-diagram tool** — FastAPI web UI + Ollama multimodal model: ingest a diagram (image/PDF), extract pinouts, draft a CAN bench plan, chat, save per-vehicle memories (VIN-keyed). |
+| [`canopy/vision/`](canopy/vision/) | **The Canopy platform** — self-hosted FastAPI + local Ollama web app: **Sage** AI assistant, guided onboarding wizard, NPI cockpit, diagram→pinout, board→components, triage + guided walkthrough, instruments (DMM/scope/siggen via PyVISA), product library, knowledge + wiki export, and the **/admin** console (users/RBAC + third-party integrations). |
 | [`canopy/cli.py`](canopy/cli.py) | `send`, `monitor`, `decode`, **`sim run`**, **`uds vin/read-dtc/clear-dtc`**, **`vision serve`**. |
 | [`vehicles/ford_f250_6.7.yaml`](vehicles/ford_f250_6.7.yaml) | Reference platform: PCM/TCM/BCM restbus + PCM UDS personality. |
-| [`tests/`](tests/) | 21 tests incl. a multi-frame UDS round-trip, E2E restbus, and the vision pipeline, against `vcan0` (CI falls back to an in-process `virtual` bus). |
+| [`tests/`](tests/) | Test suite incl. a multi-frame UDS round-trip, E2E restbus, auth/token + password hashing, and the vision pipeline, against `vcan0` (CI falls back to an in-process `virtual` bus). |
 
 **Guides:** [docs/USAGE.md](docs/USAGE.md) — driving the stack with a real USB-CAN adapter ·
 [docs/AI-VISION.md](docs/AI-VISION.md) — the local AI wiring-diagram tool (now with a dockable
@@ -98,8 +161,9 @@ research**) · [docs/DEPLOY.md](docs/DEPLOY.md) — hosting on your domain (syst
 · [docs/HARDWARE.md](docs/HARDWARE.md) — modular "car-in-a-box" schematics + BOM ·
 [docs/GAMEPLAN.md](docs/GAMEPLAN.md) — long-term roadmap to a multi-technician repair platform.
 
-**Not yet implemented** (later phases): PSU/INA228/matrix/scope drivers, power sequencing,
-module profiles + runner, vision pipeline, diagnosis engine, web UI.
+**Not yet implemented** (later phases): PSU + INA228 current-sensing drivers, the relay
+**switch matrix** + automated pin routing, hardware power sequencing, and the trained
+similarity/ML diagnosis classifier (cases are accumulating for it now).
 
 ---
 
@@ -180,11 +244,13 @@ canopy uds read-dtc vcan0      # → 0x010100 status=0x09 …
 canopy uds clear-dtc vcan0
 ```
 
-### Local AI wiring-diagram tool
+### The Canopy platform (web app, with Sage)
 
-A self-hosted web UI that reads a wiring diagram with a **local** Ollama multimodal model,
-extracts the pinout, drafts a CAN bench plan, and chats about the vehicle — nothing leaves
-the machine. See [docs/AI-VISION.md](docs/AI-VISION.md).
+Launch the self-hosted web app — the onboarding wizard, NPI cockpit, diagram→pinout,
+board→components, triage, instruments, product library, wiki export, and the `/admin`
+console — all driven by **Sage** on a **local** Ollama model, so nothing leaves the machine.
+See the [platform section](#the-canopy-platform--a-local-first-web-app) above and
+[docs/AI-VISION.md](docs/AI-VISION.md).
 
 ```bash
 pip install -e ".[vision]"            # uvicorn + pymupdf + pillow
