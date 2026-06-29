@@ -90,6 +90,18 @@ class AccessBody(BaseModel):
     level: str = "read"  # read | write | none
 
 
+class OrgBody(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    x: float | None = None
+    y: float | None = None
+
+
+class AssignBody(BaseModel):
+    user_id: int
+    org_id: int | None = None  # None -> unassign (free agent)
+
+
 class AssistantBody(BaseModel):
     message: str
     history: list[dict] = []
@@ -283,7 +295,7 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
         store.create_user("admin", auth.hash_password(config.password), "admin")
     open_mode = store.count_users() == 0
     LOCAL_ADMIN = {"id": 0, "username": "local", "role": "admin"}
-    ADMIN_PATHS = ("/api/integrations", "/api/users")
+    ADMIN_PATHS = ("/api/integrations", "/api/users", "/api/orgs")
     PUBLIC_PATHS = ("/login", "/api/login", "/healthz", "/m", "/favicon.ico")
     _VID_RE = re.compile(r"^/api/vehicles/(\d+)")
 
@@ -400,6 +412,33 @@ def create_app(config: VisionConfig | None = None) -> FastAPI:
     def users_set_access(uid: int, body: AccessBody) -> dict:
         store.set_access(uid, body.vehicle_id, body.level)
         return store.access_map(uid)
+
+    # --- organizations / teams (admin-only; bubble UI) ---
+    @app.get("/api/orgs")
+    def orgs_list() -> list[dict]:
+        return store.list_orgs()
+
+    @app.post("/api/orgs")
+    def orgs_create(body: OrgBody) -> dict:
+        return store.create_org(name=(body.name or "New team"),
+                                color=(body.color or "#0f9d6b"), x=body.x, y=body.y)
+
+    @app.post("/api/orgs/assign")  # registered before /{oid} so "assign" isn't read as an id
+    def orgs_assign(body: AssignBody) -> dict:
+        store.assign_org(body.user_id, body.org_id)
+        return {"ok": True}
+
+    @app.put("/api/orgs/{oid}")
+    def orgs_update(oid: int, body: OrgBody) -> dict:
+        row = store.update_org(oid, **body.model_dump(exclude_none=True))
+        if not row:
+            raise HTTPException(404, "no such organization")
+        return row
+
+    @app.delete("/api/orgs/{oid}")
+    def orgs_delete(oid: int) -> dict:
+        store.delete_org(oid)
+        return {"ok": True}
     client = OllamaClient(
         config.ollama_url, config.model, timeout=config.request_timeout
     )

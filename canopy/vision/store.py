@@ -105,6 +105,13 @@ CREATE TABLE IF NOT EXISTS project_access (
     user_id INTEGER NOT NULL, vehicle_id INTEGER NOT NULL, level TEXT NOT NULL DEFAULT 'read',
     PRIMARY KEY (user_id, vehicle_id)
 );
+CREATE TABLE IF NOT EXISTS org (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL, color TEXT DEFAULT '#0f9d6b', x REAL, y REAL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS org_member (
+    user_id INTEGER PRIMARY KEY, org_id INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS integration (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT, kind TEXT, base_url TEXT, auth_type TEXT, config TEXT, secret TEXT,
@@ -442,6 +449,59 @@ class Store:
     def delete_user(self, uid: int) -> None:
         self._conn.execute("DELETE FROM app_user WHERE id = ?", (uid,))
         self._conn.execute("DELETE FROM project_access WHERE user_id = ?", (uid,))
+        self._conn.execute("DELETE FROM org_member WHERE user_id = ?", (uid,))
+        self._conn.commit()
+
+    # --- organizations / teams (bubble UI in the Admin Console) ---
+    def list_orgs(self) -> list[dict]:
+        orgs = [dict(r) for r in self._conn.execute("SELECT * FROM org ORDER BY id").fetchall()]
+        by: dict[int, list[int]] = {}
+        for r in self._conn.execute("SELECT org_id, user_id FROM org_member").fetchall():
+            by.setdefault(r["org_id"], []).append(r["user_id"])
+        for o in orgs:
+            o["members"] = by.get(o["id"], [])
+        return orgs
+
+    def get_org(self, oid: int) -> dict | None:
+        row = self._conn.execute("SELECT * FROM org WHERE id = ?", (oid,)).fetchone()
+        if not row:
+            return None
+        o = dict(row)
+        o["members"] = [r["user_id"] for r in self._conn.execute(
+            "SELECT user_id FROM org_member WHERE org_id = ?", (oid,)).fetchall()]
+        return o
+
+    def create_org(self, name: str, color: str = "#0f9d6b",
+                   x: float | None = None, y: float | None = None) -> dict:
+        cur = self._conn.execute(
+            "INSERT INTO org (name, color, x, y, created_at) VALUES (?,?,?,?,?)",
+            (name, color, x, y, _now()))
+        self._conn.commit()
+        return self.get_org(cur.lastrowid)
+
+    def update_org(self, oid: int, **f) -> dict | None:
+        cols, vals = [], []
+        for k in ("name", "color", "x", "y"):
+            if k in f and f[k] is not None:
+                cols.append(f"{k} = ?")
+                vals.append(f[k])
+        if cols:
+            self._conn.execute(f"UPDATE org SET {', '.join(cols)} WHERE id = ?", (*vals, oid))
+            self._conn.commit()
+        return self.get_org(oid)
+
+    def delete_org(self, oid: int) -> None:
+        self._conn.execute("DELETE FROM org WHERE id = ?", (oid,))
+        self._conn.execute("DELETE FROM org_member WHERE org_id = ?", (oid,))
+        self._conn.commit()
+
+    def assign_org(self, user_id: int, org_id: int | None) -> None:
+        if org_id is None:
+            self._conn.execute("DELETE FROM org_member WHERE user_id = ?", (user_id,))
+        else:
+            self._conn.execute(
+                "INSERT INTO org_member (user_id, org_id) VALUES (?,?) "
+                "ON CONFLICT(user_id) DO UPDATE SET org_id = excluded.org_id", (user_id, org_id))
         self._conn.commit()
 
     def set_access(self, uid: int, vehicle_id: int, level: str | None) -> None:

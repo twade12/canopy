@@ -52,11 +52,12 @@
     function closeModal() { el('modalRoot').innerHTML = ''; }
 
     async function render() {
+      Org.stop();  // halt the physics loop when leaving the Organization tab
       const m = el('admMain');
       if (cur === 'integrations') return renderIntegrations(m);
       if (cur === 'team') return renderTeam(m);
+      if (cur === 'org') return renderOrg(m);
       const stub = {
-        org: ['Organization', 'Define your org units — Development, New Products, Marketing, … — and route projects and reports to the right group.'],
         keys: ['Canopy API keys', 'Generate and revoke API keys for programmatic access to this Canopy instance.'],
         settings: ['Settings', 'Instance settings — model, data location, appearance, and deploy options.'],
       }[cur];
@@ -183,12 +184,182 @@
       catch (e) { el('aStatus').textContent = e.message; }
     }
 
+    // ---- Organization: drag-and-drop team bubbles with soft physics ----
+    const ORG_PALETTE = ['#0f9d6b', '#0e8aa6', '#8b5cf6', '#b7791f', '#db2777', '#0891b2', '#65a30d', '#d4493f'];
+    const initialsOf = s => (s || '?').trim().split(/[\s._-]+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    const mk = (tag, attrs) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+
+    const Org = {
+      raf: 0, bubbles: [], tokens: [], svg: null, gB: null, gT: null, W: 0, H: 0, drag: null, saveT: {},
+      stop() { if (this.raf) cancelAnimationFrame(this.raf); this.raf = 0; this.bubbles = []; this.tokens = []; this.drag = null; },
+
+      async start() {
+        let orgs = [], users = [];
+        try { [orgs, users] = await Promise.all([api.get('/api/orgs'), api.get('/api/users')]); }
+        catch (e) { el('orgStage').innerHTML = `<p class="warn" style="padding:16px">${esc(e.message)}</p>`; return; }
+        const stage = el('orgStage'); const rect = stage.getBoundingClientRect();
+        this.W = rect.width; this.H = rect.height;
+        this.svg = mk('svg', { id: 'orgSvg', width: this.W, height: this.H }); this.svg.setAttribute('class', 'org-svg');
+        this.gB = mk('g', {}); this.gT = mk('g', {}); this.svg.append(this.gB, this.gT);
+        stage.innerHTML = ''; stage.appendChild(this.svg);
+        stage.appendChild(Object.assign(document.createElement('div'),
+          { className: 'org-hint', innerHTML: 'Drag a person into a team to add them · drag them out to free them · drag a bubble to move it · double-click to rename' }));
+
+        const orgOf = {};
+        this.bubbles = orgs.map((o, i) => {
+          const b = { id: o.id, name: o.name, color: o.color || ORG_PALETTE[i % ORG_PALETTE.length], count: 0,
+            x: o.x != null ? o.x : 160 + Math.random() * (this.W - 320), y: o.y != null ? o.y : 120 + Math.random() * (this.H - 240),
+            vx: 0, vy: 0, r: 60, wob: 0, wobV: 0, hover: 0 };
+          o.members.forEach(uid => orgOf[uid] = o.id); return b;
+        });
+        this.tokens = users.map(u => {
+          const oid = orgOf[u.id] || null; const home = this.bubbles.find(b => b.id === oid);
+          return { uid: u.id, name: u.username, initials: initialsOf(u.username), orgId: oid,
+            x: home ? home.x + (Math.random() - .5) * 50 : 60 + Math.random() * (this.W - 120),
+            y: home ? home.y + (Math.random() - .5) * 50 : this.H - 60 - Math.random() * 50,
+            vx: 0, vy: 0, drag: false };
+        });
+        this.buildEls(); this.recount();
+        this.svg.addEventListener('pointerdown', e => this.onDown(e));
+        window.addEventListener('pointermove', this._mv = e => this.onMove(e));
+        window.addEventListener('pointerup', this._up = e => this.onUp(e));
+        const loop = () => { this.step(); this.draw(); this.raf = requestAnimationFrame(loop); };
+        this.raf = requestAnimationFrame(loop);
+      },
+
+      buildEls() {
+        for (const b of this.bubbles) {
+          b.circle = mk('circle', { class: 'org-bubble', fill: b.color, 'fill-opacity': .12, stroke: b.color, 'stroke-width': 2 });
+          b.label = mk('text', { class: 'org-blabel', 'text-anchor': 'middle', fill: b.color }); b.label.textContent = b.name;
+          b.cnt = mk('text', { class: 'org-bcount', 'text-anchor': 'middle', fill: b.color });
+          b.del = mk('text', { class: 'org-bdel', 'text-anchor': 'middle', fill: b.color }); b.del.textContent = '×';
+          b.del.dataset.del = b.id;
+          this.gB.append(b.circle, b.label, b.cnt, b.del);
+        }
+        for (const t of this.tokens) {
+          t.g = mk('g', { class: 'org-token' }); t.g.dataset.uid = t.uid;
+          t.dot = mk('circle', { r: 17, class: 'org-dot' });
+          t.txt = mk('text', { class: 'org-tinit', 'text-anchor': 'middle', dy: '.35em' }); t.txt.textContent = t.initials;
+          t.nm = mk('text', { class: 'org-tname', 'text-anchor': 'middle', y: 30 }); t.nm.textContent = t.name;
+          const tip = mk('title', {}); tip.textContent = t.name; t.g.append(t.dot, t.txt, t.nm, tip);
+          this.colorToken(t); this.gT.appendChild(t.g);
+        }
+      },
+      colorToken(t) {
+        const b = t.orgId ? this.bubbles.find(x => x.id === t.orgId) : null; const c = b ? b.color : '#94a3b8';
+        t.dot.setAttribute('fill', c); t.dot.setAttribute('fill-opacity', b ? .9 : .5);
+        t.dot.setAttribute('stroke', c); t.g.classList.toggle('free', !b);
+        if (t.nm) t.nm.style.display = b ? 'none' : '';  // names only on free agents; rest use initials + tooltip
+      },
+      recount() {
+        for (const b of this.bubbles) { b.count = this.tokens.filter(t => t.orgId === b.id).length;
+          b.rTarget = 46 + 15 * Math.sqrt(b.count); }
+      },
+      bubbleAt(x, y) {  // topmost bubble whose disc contains (x,y)
+        for (let i = this.bubbles.length - 1; i >= 0; i--) { const b = this.bubbles[i];
+          if (Math.hypot(x - b.x, y - b.y) < b.r) return b; } return null;
+      },
+
+      onDown(e) {
+        const p = this.pt(e);
+        if (e.target.dataset && e.target.dataset.del) { this.removeTeam(+e.target.dataset.del); return; }
+        const g = e.target.closest && e.target.closest('.org-token');
+        if (g) { const t = this.tokens.find(x => x.uid === +g.dataset.uid);
+          this.drag = { kind: 'token', t }; t.drag = true; t.g.classList.add('dragging'); this.gT.appendChild(t.g); return; }
+        const b = this.bubbleAt(p.x, p.y);
+        if (b) { this.drag = { kind: 'bubble', b, dx: p.x - b.x, dy: p.y - b.y }; b.dragging = true; }
+      },
+      onMove(e) {
+        if (!this.drag) return; const p = this.pt(e);
+        if (this.drag.kind === 'token') { const t = this.drag.t; t.x = p.x; t.y = p.y; t.vx = t.vy = 0;
+          const over = this.bubbleAt(p.x, p.y); for (const b of this.bubbles) b.hover = (b === over) ? 1 : 0; }
+        else { const b = this.drag.b; b.x = p.x - this.drag.dx; b.y = p.y - this.drag.dy; b.vx = b.vy = 0; }
+      },
+      onUp() {
+        if (!this.drag) return; const d = this.drag; this.drag = null;
+        if (d.kind === 'token') { const t = d.t; t.drag = false; t.g.classList.remove('dragging');
+          const over = this.bubbleAt(t.x, t.y); const newId = over ? over.id : null;
+          for (const b of this.bubbles) b.hover = 0;
+          if (newId !== t.orgId) { t.orgId = newId; this.colorToken(t); this.recount();
+            if (over) { over.wobV += 7; } this.persistAssign(t.uid, newId); }
+        } else { d.b.dragging = false; this.saveOrg(d.b); }
+      },
+      pt(e) { const r = this.svg.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; },
+
+      step() {
+        const B = this.bubbles, T = this.tokens, cx = this.W / 2, cy = this.H / 2;
+        for (const b of B) {
+          b.r += (b.rTarget + (b.hover ? 6 : 0) - b.r) * 0.14;
+          b.wobV += -b.wob * 0.18; b.wobV *= 0.86; b.wob += b.wobV;  // squish spring
+          if (!b.dragging) {
+            b.vx += (cx - b.x) * 0.0006; b.vy += (cy - b.y) * 0.0006;
+            for (const o of B) { if (o === b) continue; const dx = b.x - o.x, dy = b.y - o.y;
+              const d = Math.hypot(dx, dy) || 1, min = b.r + o.r + 14;
+              if (d < min) { const f = (min - d) / d * 0.5; b.vx += dx * f * 0.02; b.vy += dy * f * 0.02; } }
+            b.vx *= 0.9; b.vy *= 0.9; b.x += b.vx; b.y += b.vy;
+            b.x = Math.max(b.r, Math.min(this.W - b.r, b.x)); b.y = Math.max(b.r, Math.min(this.H - b.r, b.y));
+          }
+        }
+        for (const t of T) {
+          if (t.drag) continue; const home = t.orgId ? B.find(x => x.id === t.orgId) : null;
+          if (home) { const dx = home.x - t.x, dy = home.y - t.y, d = Math.hypot(dx, dy) || 1;
+            const inner = home.r - 22; const k = d > inner ? 0.05 : 0.008;  // weak pull inside; repulsion spreads them
+            t.vx += dx * k; t.vy += dy * k;
+          } else { t.vy += (this.H - 46 - t.y) * 0.003; t.vx += (this.W / 2 - t.x) * 0.0005;
+            const b = this.bubbleAt(t.x, t.y); if (b) { const dx = t.x - b.x, dy = t.y - b.y, d = Math.hypot(dx, dy) || 1;
+              t.vx += dx / d * 0.6; t.vy += dy / d * 0.6; } }
+          for (const o of T) { if (o === t) continue; const dx = t.x - o.x, dy = t.y - o.y; const d = Math.hypot(dx, dy) || 1;
+            if (d < 44) { const f = (44 - d) / d * 0.5; t.vx += dx * f * 0.13; t.vy += dy * f * 0.13; } }
+          t.vx *= 0.86; t.vy *= 0.86; t.x += t.vx; t.y += t.vy;
+          t.x = Math.max(18, Math.min(this.W - 18, t.x)); t.y = Math.max(18, Math.min(this.H - 18, t.y));
+        }
+      },
+      draw() {
+        for (const b of this.bubbles) { const r = Math.max(20, b.r + b.wob);
+          b.circle.setAttribute('cx', b.x); b.circle.setAttribute('cy', b.y); b.circle.setAttribute('r', r);
+          b.circle.setAttribute('fill-opacity', b.hover ? .2 : .12);
+          b.label.setAttribute('x', b.x); b.label.setAttribute('y', b.y - 4); b.label.textContent = b.name;
+          b.cnt.setAttribute('x', b.x); b.cnt.setAttribute('y', b.y + 16); b.cnt.textContent = b.count + (b.count === 1 ? ' member' : ' members');
+          b.del.setAttribute('x', b.x + r - 12); b.del.setAttribute('y', b.y - r + 18);
+        }
+        for (const t of this.tokens) t.g.setAttribute('transform', `translate(${t.x.toFixed(1)},${t.y.toFixed(1)})`);
+      },
+
+      persistAssign(uid, orgId) { api.send('/api/orgs/assign', 'POST', { user_id: uid, org_id: orgId }).catch(() => {}); },
+      saveOrg(b) { clearTimeout(this.saveT[b.id]);
+        this.saveT[b.id] = setTimeout(() => api.send('/api/orgs/' + b.id, 'PUT', { x: Math.round(b.x), y: Math.round(b.y) }).catch(() => {}), 350); },
+      async addTeam(name) { const i = this.bubbles.length;
+        const o = await api.send('/api/orgs', 'POST', { name, color: ORG_PALETTE[i % ORG_PALETTE.length],
+          x: Math.round(this.W / 2 + (Math.random() - .5) * 120), y: Math.round(this.H / 2 + (Math.random() - .5) * 120) });
+        this.stopKeep(); this.start();  // simplest: reload the stage with the new bubble
+      },
+      stopKeep() { if (this.raf) cancelAnimationFrame(this.raf); this.raf = 0;
+        window.removeEventListener('pointermove', this._mv); window.removeEventListener('pointerup', this._up); },
+      async rename(b) { const name = prompt('Rename team', b.name); if (name && name.trim()) { b.name = name.trim();
+        await api.send('/api/orgs/' + b.id, 'PUT', { name: b.name }).catch(() => {}); } },
+      async removeTeam(id) { const b = this.bubbles.find(x => x.id === id); if (!b) return;
+        if (!confirm(`Delete team "${b.name}"? Members become unassigned.`)) return;
+        await api.send('/api/orgs/' + id, 'DELETE').catch(() => {}); this.stopKeep(); this.start(); },
+    };
+
+    async function renderOrg(m) {
+      m.innerHTML = `<div class="adm-head"><h1>Organization</h1><button class="primary" onclick="newTeam()">+ New team</button></div>
+        <p class="muted" style="max-width:720px">Teams are living bubbles. <b>Drag a person into a bubble</b> to add them to that team, drag them back out to free them — the bubble grows and wobbles as people join. Drag a bubble to reposition it; double-click to rename.</p>
+        <div class="org-stage" id="orgStage"></div>`;
+      Org.start();
+      // double-click to rename a bubble
+      el('orgStage').addEventListener('dblclick', e => { const b = Org.bubbleAt(...Object.values(Org.pt(e))); if (b) Org.rename(b); });
+    }
+    async function newTeam() { const name = prompt('Name the new team', 'New team'); if (name && name.trim()) Org.addTeam(name.trim()); }
+
     document.documentElement.dataset.theme = localStorage.getItem('canopy-theme') || 'light';
     renderNav(); render();
     window.go = go; window.openForm = openForm; window.applyPreset = applyPreset; window.authFields = authFields;
     window.saveInt = saveInt; window.testInt = testInt; window.delInt = delInt; window.closeModal = closeModal;
     window.openUser = openUser; window.saveUser = saveUser; window.delUser = delUser;
     window.manageAccess = manageAccess; window.setAccess = setAccess; window.render = render;
+    window.newTeam = newTeam;
   </script>
 </body>
 </html>

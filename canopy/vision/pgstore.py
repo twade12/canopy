@@ -88,6 +88,13 @@ CREATE TABLE IF NOT EXISTS project_access (
     user_id INTEGER NOT NULL, vehicle_id INTEGER NOT NULL, level TEXT NOT NULL DEFAULT 'read',
     PRIMARY KEY (user_id, vehicle_id)
 );
+CREATE TABLE IF NOT EXISTS org (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL, color TEXT DEFAULT '#0f9d6b',
+    x DOUBLE PRECISION, y DOUBLE PRECISION, created_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS org_member (
+    user_id INTEGER PRIMARY KEY, org_id INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS integration (
     id SERIAL PRIMARY KEY,
     name TEXT, kind TEXT, base_url TEXT, auth_type TEXT, config TEXT, secret TEXT,
@@ -374,6 +381,58 @@ class PgStore:
         with self._conn.cursor() as cur:
             cur.execute("DELETE FROM app_user WHERE id = %s", (uid,))
             cur.execute("DELETE FROM project_access WHERE user_id = %s", (uid,))
+            cur.execute("DELETE FROM org_member WHERE user_id = %s", (uid,))
+
+    # --- organizations / teams (bubble UI in the Admin Console) ---
+    def list_orgs(self) -> list[dict]:
+        orgs = self._all("SELECT * FROM org ORDER BY id")
+        by: dict[int, list[int]] = {}
+        for r in self._all("SELECT org_id, user_id FROM org_member"):
+            by.setdefault(r["org_id"], []).append(r["user_id"])
+        for o in orgs:
+            o["members"] = by.get(o["id"], [])
+        return orgs
+
+    def get_org(self, oid: int) -> dict | None:
+        o = self._one("SELECT * FROM org WHERE id = %s", (oid,))
+        if not o:
+            return None
+        o["members"] = [r["user_id"] for r in self._all(
+            "SELECT user_id FROM org_member WHERE org_id = %s", (oid,))]
+        return o
+
+    def create_org(self, name: str, color: str = "#0f9d6b",
+                   x: float | None = None, y: float | None = None) -> dict:
+        r = self._one(
+            "INSERT INTO org (name, color, x, y, created_at) VALUES (%s,%s,%s,%s,%s) RETURNING id",
+            (name, color, x, y, _now()))
+        return self.get_org(r["id"])
+
+    def update_org(self, oid: int, **f) -> dict | None:
+        cols, vals = [], []
+        for k in ("name", "color", "x", "y"):
+            if k in f and f[k] is not None:
+                cols.append(f"{k} = %s")
+                vals.append(f[k])
+        if cols:
+            with self._conn.cursor() as cur:
+                cur.execute(f"UPDATE org SET {', '.join(cols)} WHERE id = %s", (*vals, oid))
+        return self.get_org(oid)
+
+    def delete_org(self, oid: int) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute("DELETE FROM org WHERE id = %s", (oid,))
+            cur.execute("DELETE FROM org_member WHERE org_id = %s", (oid,))
+
+    def assign_org(self, user_id: int, org_id: int | None) -> None:
+        with self._conn.cursor() as cur:
+            if org_id is None:
+                cur.execute("DELETE FROM org_member WHERE user_id = %s", (user_id,))
+            else:
+                cur.execute(
+                    "INSERT INTO org_member (user_id, org_id) VALUES (%s,%s) "
+                    "ON CONFLICT(user_id) DO UPDATE SET org_id = excluded.org_id",
+                    (user_id, org_id))
 
     def set_access(self, uid: int, vehicle_id: int, level: str | None) -> None:
         with self._conn.cursor() as cur:
