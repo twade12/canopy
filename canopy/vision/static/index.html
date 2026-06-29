@@ -12,7 +12,7 @@
     <span class="wordmark">CANOPY</span>
     <button class="iconbtn" id="cockpitBtn" title="NPI Cockpit" onclick="ui.openView('cockpit')"></button>
     <div class="spacer"></div>
-    <button class="iconbtn" id="assistantBtn" title="Assistant (all projects)" onclick="ui.openView('assistant')"></button>
+    <button class="iconbtn" id="assistantBtn" title="Sage — AI assistant (all projects)" onclick="ui.openView('assistant')"></button>
     <button class="iconbtn" id="researchBtn" title="Deep research" onclick="ui.openView('research')"></button>
     <button class="iconbtn" id="knowledgeBtn" title="Knowledge base" onclick="ui.openView('knowledge')"></button>
     <button class="iconbtn" id="productsBtn" title="Product library" onclick="ui.openView('products')"></button>
@@ -23,10 +23,11 @@
     <button class="iconbtn" id="benchBtn" title="CAN bench" onclick="ui.openView('bench')"></button>
     <button class="iconbtn" id="apiBtn" title="API documentation" onclick="ui.openView('api')"></button>
     <button class="iconbtn" id="resetBtn" title="Reset layout" onclick="ui.resetLayout()"></button>
-    <a class="iconbtn" id="adminBtn" title="Admin console" href="/admin"></a>
     <button class="iconbtn" id="themeToggle" title="Toggle theme" onclick="ui.toggleTheme()"></button>
-    <span class="user-badge hidden" id="userBadge"></span>
     <button class="iconbtn hidden" id="logoutBtn" title="Sign out" onclick="ui.logout()"></button>
+    <span class="topbar-div"></span>
+    <a class="iconbtn hidden" id="adminBtn" title="Admin console" href="/admin"></a>
+    <span class="user-badge hidden" id="userBadge"></span>
     <div class="status-pill"><span id="statusDot" class="dot"></span><span id="statusText">…</span></div>
   </header>
 

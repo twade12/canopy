@@ -9,7 +9,9 @@ const ICON = {
   record: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h6M7 13h10"/>',
   api: '<path d="M8 3H5v18h3M16 3h3v18h-3M9 12h6"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/>',
-  moon: '<path d="M21 12.8A8 8 0 1111 3a6 6 0 0010 9.8z"/>', reset: '<path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 8a8 8 0 00-14-3M4 16a8 8 0 0014 3"/>',
+  moon: '<path d="M21 12.8A8 8 0 1111 3a6 6 0 0010 9.8z"/>',
+  reset: '<path d="M3 12a9 9 0 0115-6.6L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15 6.6L3 16"/><path d="M3 21v-5h5"/>',
+  leaf: '<path d="M5 19C5 10 11 4 20 4c0 9-6 15-15 15z"/><path d="M5 19C9 15 13 12 18 10"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>', prev: '<path d="M15 6l-6 6 6 6"/>', next: '<path d="M9 6l6 6-6 6"/>',
   logout: '<path d="M14 7V5a2 2 0 00-2-2H6a2 2 0 00-2 2v14a2 2 0 002 2h6a2 2 0 002-2v-2M10 12h11M18 9l3 3-3 3"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
@@ -24,7 +26,7 @@ const ICON = {
   gauge: '<path d="M4 19a8 8 0 1116 0"/><path d="M12 19l5-5"/>', scope: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M5 13h2l2-4 2 7 2-5h4"/>', siggen: '<path d="M3 12c3-7 5-7 7 0s4 7 7 0"/>',
   catalog: '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   cockpit: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/>',
-  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M5 5l2 2M17 17l2 2M2 12h3M19 12h3M5 19l2-2M17 7l2-2"/>',
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 00.32 1.77l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.6 1.6 0 00-1.77-.32 1.6 1.6 0 00-.97 1.47V21a2 2 0 01-4 0v-.1A1.6 1.6 0 008.9 19.4a1.6 1.6 0 00-1.77.32l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.6 1.6 0 00.32-1.77 1.6 1.6 0 00-1.47-.97H3a2 2 0 010-4h.1A1.6 1.6 0 004.6 8.9a1.6 1.6 0 00-.32-1.77l-.06-.06a2 2 0 112.83-2.83l.06.06a1.6 1.6 0 001.77.32H9a1.6 1.6 0 00.97-1.47V3a2 2 0 014 0v.1a1.6 1.6 0 00.97 1.47 1.6 1.6 0 001.77-.32l.06-.06a2 2 0 112.83 2.83l-.06.06a1.6 1.6 0 00-.32 1.77V9a1.6 1.6 0 001.47.97H21a2 2 0 010 4h-.1a1.6 1.6 0 00-1.47.97z"/>',
   zin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>', tag: '<path d="M3 7l8-4 8 4v10l-8 4-8-4z"/>',
   assistant: '<path d="M12 3l1.7 4L18 8.7l-4.3 1.6L12 15l-1.7-4.7L6 8.7 10.3 7z"/><circle cx="18" cy="18" r="2.4"/>',
   bench: '<rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 8V5M17 8V5M8 13h8"/>', link: '<path d="M9 15l6-6M8 8H6a4 4 0 000 8h2M16 16h2a4 4 0 000-8h-2"/>',
@@ -42,7 +44,7 @@ const VIEWS = [
   { key: 'triage', label: 'Triage', icon: 'triage' }, { key: 'pcb', label: 'PCB', icon: 'chip' },
   { key: 'memories', label: 'Memories', icon: 'memory' }, { key: 'record', label: 'Record', icon: 'record' },
   { key: 'profile', label: 'Profile', icon: 'cab' }, { key: 'wiki', label: 'Wiki', icon: 'record' },
-  { key: 'assistant', label: 'Assistant', icon: 'assistant' }, { key: 'bench', label: 'Bench', icon: 'bench' },
+  { key: 'assistant', label: 'Sage', icon: 'leaf' }, { key: 'bench', label: 'Bench', icon: 'bench' },
   { key: 'research', label: 'Research', icon: 'search' }, { key: 'api', label: 'API', icon: 'api' },
   { key: 'cockpit', label: 'Cockpit', icon: 'cockpit' },
   { key: 'knowledge', label: 'Knowledge', icon: 'book' }, { key: 'products', label: 'Products', icon: 'catalog' },
@@ -361,7 +363,7 @@ const ui = {
     document.documentElement.dataset.theme = state.theme;
     el('sidebarToggle').innerHTML = svg('menu'); el('themeToggle').innerHTML = svg(state.theme === 'dark' ? 'sun' : 'moon');
     el('resetBtn').innerHTML = svg('reset'); el('apiBtn').innerHTML = svg('api'); el('newRecBtn').innerHTML = svg('plus'); el('searchIcon').innerHTML = svg('search');
-    el('assistantBtn').innerHTML = svg('assistant'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search'); el('logoutBtn').innerHTML = svg('logout');
+    el('assistantBtn').innerHTML = svg('leaf'); el('benchBtn').innerHTML = svg('bench'); el('researchBtn').innerHTML = svg('search'); el('logoutBtn').innerHTML = svg('logout');
     const kbtn = el('knowledgeBtn'); if (kbtn) kbtn.innerHTML = svg('book');
     const pbtn = el('productsBtn'); if (pbtn) pbtn.innerHTML = svg('catalog');
     const ckb = el('cockpitBtn'); if (ckb) ckb.innerHTML = svg('cockpit');
@@ -373,7 +375,7 @@ const ui = {
       const b = el('userBadge');
       if (b && s.auth) { b.classList.remove('hidden');
         b.innerHTML = `<span class="ub-name">${esc(u.username || '')}</span><span class="ub-role ${esc(u.role)}">${u.role === 'admin' ? 'Admin' : 'Member'}</span>`; }
-      const adb = el('adminBtn'); if (adb && u.role !== 'admin') adb.classList.add('hidden');  // admin console is admin-only
+      const adb = el('adminBtn'); if (adb && u.role === 'admin') adb.classList.remove('hidden');  // admin console is admin-only
     }).catch(() => {});
     el('fileInput').onchange = e => e.target.files[0] && this.uploadFile(e.target.files[0]);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.streamCtrl) this.cancelStream(); });
@@ -553,7 +555,7 @@ const ui = {
       <div class="wiz-stepper">${STEPS.map((x, i) => `<div class="wiz-pip ${i === w.step ? 'cur' : (i < w.step ? 'done' : '')}"><span>${i < w.step ? svg('check') : i + 1}</span>${x.title.split(' ')[0]}</div>`).join('')}</div>
       <h2 class="wiz-title">${s.title}</h2>
       <div class="wiz-body">${body}</div>
-      <div class="wiz-assist">${svg('assistant')}<span><b>Sage</b> · ${this.wizAssist(s.key)}</span></div>
+      <div class="wiz-assist">${svg('leaf')}<span><b>Sage</b> · ${this.wizAssist(s.key)}</span></div>
       <div class="wiz-nav"><button onclick="ui.wizardBack()" ${w.step === 0 || w.busy ? 'disabled' : ''}>Back</button><div class="spacer"></div>${s.skip ? `<button class="ghost" onclick="ui.wizardNext(true)" ${w.busy ? 'disabled' : ''}>Skip</button>` : ''}<button class="primary" onclick="ui.wizardNext()" ${w.busy ? 'disabled' : ''}>${w.step === STEPS.length - 1 ? 'Open workspace' : 'Next'}</button></div>
     </div>`;
   },
