@@ -19,6 +19,31 @@
 
 ---
 
+## Screenshots
+
+> The local-first web platform (`canopy vision serve`) — driven by **Sage** on a local model.
+
+<table>
+<tr>
+<td width="50%"><img src="assets/screenshots/01-login.png" alt="Sign in"><br><sub><b>Sign in</b> — themed split with Sage streaming what the platform does</sub></td>
+<td width="50%"><img src="assets/screenshots/02-cockpit.png" alt="NPI Cockpit"><br><sub><b>NPI Cockpit</b> — every module's pipeline readiness, color-coded by owning team</sub></td>
+</tr>
+<tr>
+<td><img src="assets/screenshots/03-wizard-sage.png" alt="Guided onboarding"><br><sub><b>Guided onboarding (Sage)</b> — identify → diagram → board → symptom → review</sub></td>
+<td><img src="assets/screenshots/04-organization.png" alt="Organization"><br><sub><b>Organization</b> — drag people into team bubbles with soft physics</sub></td>
+</tr>
+<tr>
+<td><img src="assets/screenshots/05-team.png" alt="Team & access"><br><sub><b>Team &amp; access</b> — one admin, sub-users with per-project read/write, team chips</sub></td>
+<td><img src="assets/screenshots/06-admin-integrations.png" alt="Integrations"><br><sub><b>Admin Console</b> — extensible third-party integrations (Slack, Digi-Key, WordPress…)</sub></td>
+</tr>
+<tr>
+<td><img src="assets/screenshots/07-annotations.png" alt="Annotated photos"><br><sub><b>Annotated photos</b> — markup + captions that flow straight into the wiki</sub></td>
+<td><img src="assets/screenshots/08-knowledge.png" alt="Knowledge base"><br><sub><b>Knowledge base</b> — 33 house articles consulted automatically during triage</sub></td>
+</tr>
+</table>
+
+---
+
 ## What CANOPY does
 
 Plug an automotive module onto the bench, pick its profile, hit **run**. The station:
