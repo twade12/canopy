@@ -75,7 +75,7 @@ const api = {
   },
   _bust(p) { if (p) for (const k of this._cache.keys()) { if (k === p || k.startsWith(p)) this._cache.delete(k); } },
   async send(p, m, b) { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); if (!r.ok) throw await err(r); this._cache.clear(); return r.json(); },
-  async upload(p, f) { const fd = new FormData(); fd.append('file', f); const r = await fetch(p, { method: 'POST', body: fd }); if (!r.ok) throw await err(r); this._cache.clear(); return r.json(); },
+  async upload(p, f, extra) { const fd = new FormData(); fd.append('file', f); if (extra) for (const k in extra) fd.append(k, extra[k]); const r = await fetch(p, { method: 'POST', body: fd }); if (!r.ok) throw await err(r); this._cache.clear(); return r.json(); },
 };
 async function err(r) { let d; try { d = (await r.json()).detail; } catch { d = r.statusText; } return new Error(d || ('HTTP ' + r.status)); }
 const el = id => document.getElementById(id);
@@ -337,12 +337,19 @@ const anno = {
     all.forEach(s => this._draw(ctx, s, canvas.width, canvas.height, 1)); },
   async save() {
     if (!this.img || !state.current) return; const st = el('lbStatus'); if (st) st.textContent = 'Saving…';
-    const W = this.img.naturalWidth, H = this.img.naturalHeight;
+    // Cap the longest edge so we never encode a full-sensor photo (wiki images don't need it).
+    const MAX = 2200, nW = this.img.naturalWidth, nH = this.img.naturalHeight;
+    const scale = Math.min(1, MAX / Math.max(nW, nH));
+    const W = Math.round(nW * scale), H = Math.round(nH * scale);
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const ctx = cv.getContext('2d');
-    ctx.drawImage(this.img, 0, 0, W, H); const scale = W / this.canvas.width;
-    this.strokes.forEach(s => this._draw(ctx, s, W, H, scale));
-    try { const note = (el('lbCap') || {}).value || '';
-      const r = await api.send(`/api/vehicles/${state.current.id}/annotation`, 'POST', { image: cv.toDataURL('image/png'), note: note.trim() });
+    ctx.drawImage(this.img, 0, 0, W, H);
+    this.strokes.forEach(s => this._draw(ctx, s, W, H, W / this.canvas.width));
+    // toBlob is async (off the critical path) + JPEG q0.9 is ~10x smaller than full-res PNG.
+    const blob = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.9));
+    try {
+      const note = (el('lbCap') || {}).value || '';
+      const f = new File([blob], 'annotation.jpg', { type: 'image/jpeg' });
+      const r = await api.upload(`/api/vehicles/${state.current.id}/annotation`, f, { note: note.trim() });
       if (st) st.textContent = 'Saved to the Annotations tab'; aiToast.done('Annotation saved');
       const cap = el('lbSaveCap'); if (cap) cap.setAttribute('onclick', `ui.saveCaption(${r.id})`);
       ensureView('annotations');  // collect it into the Annotations gallery (visible when the lightbox closes)
