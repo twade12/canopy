@@ -121,10 +121,48 @@ class UdsServer:
             0x22: self._read_data_by_identifier,
             0x19: self._read_dtc_information,
             0x14: self._clear_diagnostic_information,
+            0x27: self._security_access,
+            0x2E: self._write_data_by_identifier,
+            0x2F: self._io_control,
+            0x31: self._routine_control,
         }.get(sid)
         if handler is None:
             return bytes([0x7F, sid, NRC_SERVICE_NOT_SUPPORTED])
         return handler(req)
+
+    # --- actuation services (a convincing target for control commands) ---------
+    def _security_access(self, req: bytes) -> bytes:
+        if len(req) < 2:
+            return bytes([0x7F, 0x27, NRC_SUBFUNCTION_NOT_SUPPORTED])
+        sub = req[1]
+        if sub % 2 == 1:  # requestSeed (odd)
+            self._seed = bytes([0x11, 0x22, 0x33, 0x44])
+            return bytes([0x67, sub, *self._seed])
+        # sendKey (even): the demo algorithm is a byte-wise NOT of the seed
+        expected = bytes((b ^ 0xFF) & 0xFF for b in getattr(self, "_seed", b""))
+        if bytes(req[2:]) == expected:
+            self._unlocked = True
+            return bytes([0x67, sub])
+        return bytes([0x7F, 0x27, 0x35])  # invalidKey
+
+    def _write_data_by_identifier(self, req: bytes) -> bytes:
+        if len(req) < 3:
+            return bytes([0x7F, 0x2E, NRC_REQUEST_OUT_OF_RANGE])
+        did = (req[1] << 8) | req[2]
+        self.config.did_map[did] = bytes(req[3:])  # stored; readable back via 0x22
+        return bytes([0x6E, req[1], req[2]])
+
+    def _io_control(self, req: bytes) -> bytes:
+        if len(req) < 4:
+            return bytes([0x7F, 0x2F, NRC_REQUEST_OUT_OF_RANGE])
+        # positive response echoes DID + control parameter + (controlState) data
+        return bytes([0x6F, *req[1:]])
+
+    def _routine_control(self, req: bytes) -> bytes:
+        if len(req) < 4:
+            return bytes([0x7F, 0x31, NRC_REQUEST_OUT_OF_RANGE])
+        # echo routineControlType + routineId (+ optional routineStatusRecord)
+        return bytes([0x71, *req[1:]])
 
     @staticmethod
     def _suppress(subfunction: int) -> bool:

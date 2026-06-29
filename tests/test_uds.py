@@ -46,3 +46,32 @@ def test_uds_round_trip(diag_channel: CanConfig) -> None:
             assert uds.read_dtcs(0xFF) == []                  # cleared
     finally:
         server.stop()
+
+
+def test_uds_actuation_round_trip(diag_channel: CanConfig) -> None:
+    """The new control services (0x2F / 0x31 / 0x2E / 0x27) against the virtual ECU."""
+    server = UdsServer(
+        diag_channel, request_id=0x7E0, response_id=0x7E8, config=UdsServerConfig(vin=VIN))
+    server.start()
+    try:
+        with UdsClient(channel=diag_channel, request_id=0x7E0, response_id=0x7E8) as uds:
+            uds.change_session(3)
+
+            io = uds.io_control(0x4A01, "short_term_adjust", b"\x01")   # actuate (0x2F)
+            assert io.positive and io.service == 0x2F
+
+            routine = uds.routine_control(0x0203, "start", b"\xAA")     # run routine (0x31)
+            assert routine.positive and routine.service == 0x31
+
+            assert uds.write_did(0x2A10, b"\x12\x34").positive          # write (0x2E)
+            readback = uds.read_did(0x2A10)                             # read it back (0x22)
+            assert readback.positive and readback.data[2:] == b"\x12\x34"
+
+            def invert(seed: bytes) -> bytes:
+                return bytes((b ^ 0xFF) & 0xFF for b in seed)
+
+            assert uds.security_access(1, key_fn=invert).positive       # unlock (0x27)
+            wrong = uds.security_access(1)                              # echo seed -> invalidKey
+            assert not wrong.positive and wrong.nrc == 0x35
+    finally:
+        server.stop()

@@ -208,6 +208,107 @@ def uds_clear_dtc(
     typer.echo("DTCs cleared")
 
 
+def _hexbytes(s: str) -> bytes:
+    s = (s or "").replace("0x", "").replace(" ", "")
+    return bytes.fromhex(s) if s else b""
+
+
+@uds_app.command("io-control")
+def uds_io_control(
+    channel: str = typer.Argument(..., help="CAN channel, e.g. vcan0."),
+    did: str = typer.Argument(..., help="IO DID, e.g. 0x4A01."),
+    control: str = typer.Option("short_term_adjust",
+                                help="return_control|reset_to_default|freeze|short_term_adjust."),
+    data: str = typer.Option("", help="Control-state payload bytes (hex)."),
+    session: int = typer.Option(3, help="Diagnostic session to enter first."),
+    interface: str = typer.Option("socketcan"),
+    req: str = typer.Option("0x7E0"),
+    rsp: str = typer.Option("0x7E8"),
+) -> None:
+    """InputOutputControl (0x2F) — force an actuator (e.g. A/C clutch ON)."""
+    with _uds_client(channel, interface, req, rsp) as uds:
+        uds.change_session(session)
+        typer.echo(str(uds.io_control(_parse_id(did), control, _hexbytes(data))))
+
+
+@uds_app.command("routine")
+def uds_routine(
+    channel: str = typer.Argument(..., help="CAN channel, e.g. vcan0."),
+    routine_id: str = typer.Argument(..., help="Routine id, e.g. 0x0203."),
+    control: str = typer.Option("start", help="start|stop|results."),
+    data: str = typer.Option("", help="Routine option record (hex)."),
+    session: int = typer.Option(3, help="Diagnostic session to enter first."),
+    interface: str = typer.Option("socketcan"),
+    req: str = typer.Option("0x7E0"),
+    rsp: str = typer.Option("0x7E8"),
+) -> None:
+    """RoutineControl (0x31) — run a built-in actuator/self-test routine."""
+    with _uds_client(channel, interface, req, rsp) as uds:
+        uds.change_session(session)
+        typer.echo(str(uds.routine_control(_parse_id(routine_id), control, _hexbytes(data))))
+
+
+@uds_app.command("read-did")
+def uds_read_did(
+    channel: str = typer.Argument(..., help="CAN channel, e.g. vcan0."),
+    did: str = typer.Argument(..., help="DID, e.g. 0xF190."),
+    interface: str = typer.Option("socketcan"),
+    req: str = typer.Option("0x7E0"),
+    rsp: str = typer.Option("0x7E8"),
+) -> None:
+    """ReadDataByIdentifier (0x22), raw — for arbitrary OEM DIDs."""
+    with _uds_client(channel, interface, req, rsp) as uds:
+        uds.change_session(1)
+        r = uds.read_did(_parse_id(did))
+    typer.echo(str(r) if not r.positive else f"DID 0x{_parse_id(did):04X} = {r.data.hex(' ')}")
+
+
+@uds_app.command("write-did")
+def uds_write_did(
+    channel: str = typer.Argument(..., help="CAN channel, e.g. vcan0."),
+    did: str = typer.Argument(..., help="DID, e.g. 0x2A10."),
+    data: str = typer.Argument(..., help="Bytes to write (hex)."),
+    session: int = typer.Option(3, help="Diagnostic session to enter first."),
+    interface: str = typer.Option("socketcan"),
+    req: str = typer.Option("0x7E0"),
+    rsp: str = typer.Option("0x7E8"),
+) -> None:
+    """WriteDataByIdentifier (0x2E) — set a configuration/value identifier."""
+    with _uds_client(channel, interface, req, rsp) as uds:
+        uds.change_session(session)
+        typer.echo(str(uds.write_did(_parse_id(did), _hexbytes(data))))
+
+
+@app.command("send-signal")
+def send_signal(
+    channel: str = typer.Argument(..., help="CAN channel, e.g. vcan0."),
+    dbc: str = typer.Argument(..., help="Path to the platform DBC file."),
+    message: str = typer.Argument(..., help="DBC message name to encode."),
+    assignments: list[str] = typer.Argument(None, help="Signal=Value pairs, e.g. AC_Clutch=1."),
+    interface: str = typer.Option("socketcan"),
+    fd: bool = typer.Option(False, "--fd", help="Force a CAN FD frame."),
+) -> None:
+    """Encode named DBC signals onto a message and transmit it (application-layer control)."""
+    import cantools
+
+    from canopy.hal import commands as cmd
+    from canopy.hal.can_iface import CanInterface
+
+    db = cantools.database.load_file(dbc)
+    signals: dict = {}
+    for pair in assignments or []:
+        key, _, val = pair.partition("=")
+        val = val.strip()
+        try:
+            signals[key.strip()] = float(val) if "." in val else int(val)
+        except ValueError:
+            signals[key.strip()] = val
+    arb, data, ext, is_fd = cmd.encode_signal_frame(db, message, signals)
+    with CanInterface(_make_config(channel, interface, fd=fd or is_fd)) as iface:
+        iface.send(arb, data, is_extended_id=ext, is_fd=fd or is_fd)
+    typer.echo(f"sent 0x{arb:X} [{data.hex(' ')}]")
+
+
 # --- vision: local AI wiring-diagram tool -------------------------------------
 vision_app = typer.Typer(help="Local AI wiring-diagram + chat web UI (Ollama).")
 app.add_typer(vision_app, name="vision")

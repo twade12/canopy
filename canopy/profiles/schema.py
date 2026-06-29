@@ -81,6 +81,52 @@ class Safety(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class CommandRequirements(BaseModel):
+    """Preconditions an actuation needs before it will be accepted by the module."""
+
+    session: int = 1               # diagnostic session (0x10) the command runs in
+    security_level: int = 0        # 0 = none; else the SecurityAccess (0x27) level
+    ignition: bool = False         # KL15 must be on
+
+
+class CommandExpect(BaseModel):
+    """How to judge whether the command worked (closed-loop check)."""
+
+    positive: bool = True          # expect a positive UDS response
+    signal: str = ""               # or confirm a DBC signal value came back…
+    equals: float | None = None
+    contains_hex: str = ""         # …or that the response payload contains these bytes
+
+
+class Command(BaseModel):
+    """One named, parameterized action that controls the module over CAN.
+
+    ``kind`` picks the channel:
+      * ``raw``         — send ``data_hex`` on ``arbitration_id`` (cyclic if ``cycle_ms``).
+      * ``dbc``         — encode ``signals`` onto DBC ``message`` and send.
+      * ``uds_io``      — InputOutputControl (0x2F) on ``did`` with ``control`` + ``value_hex``.
+      * ``uds_routine`` — RoutineControl (0x31) on ``did`` (routineId) + ``control``/``value_hex``.
+      * ``uds_write`` / ``uds_read`` — Write/Read DataByIdentifier (0x2E / 0x22).
+    """
+
+    name: str
+    kind: str = "raw"
+    arbitration_id: str = ""       # raw/dbc TX id (hex, e.g. "0x6C0")
+    request_id: str = ""           # uds tester→ECU (hex); falls back to diagnostics.request_id
+    response_id: str = ""          # uds ECU→tester (hex)
+    is_fd: bool = False
+    cycle_ms: int = 0              # >0 = transmit periodically
+    data_hex: str = ""             # raw payload bytes
+    message: str = ""              # dbc message name
+    signals: dict = Field(default_factory=dict)   # dbc signal -> value
+    did: str = ""                  # uds DID / routineId (hex)
+    control: str = ""              # io control param or routine control type
+    value_hex: str = ""            # uds data payload bytes
+    requires: CommandRequirements = Field(default_factory=CommandRequirements)
+    expect: CommandExpect = Field(default_factory=CommandExpect)
+    note: str = ""                 # where it came from (e.g. "captured from bidirectional tool")
+
+
 class ModuleProfile(BaseModel):
     schema_version: str = "1.0"
     identity: Identity = Field(default_factory=Identity)
@@ -92,6 +138,7 @@ class ModuleProfile(BaseModel):
     signals: dict = Field(default_factory=dict)    # restbus / pattern inputs (template/tech-filled)
     loads: dict = Field(default_factory=dict)       # safe loads on module outputs
     expected: dict = Field(default_factory=dict)     # expected observations (pass criteria)
+    commands: list[Command] = Field(default_factory=list)  # actuation catalog (labeled buttons)
     pass_fail: list[str] = Field(default_factory=list)
     safety: Safety = Field(default_factory=Safety)
 
