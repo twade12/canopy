@@ -786,8 +786,116 @@ const ui = {
         <div id="bUdsOut" class="muted" style="margin-top:8px"></div>${hints}</div>
       <div class="bench-section"><h4>Send raw frame</h4>
         <div class="row"><input id="bFid" placeholder="123" style="width:90px"><input id="bFdata" placeholder="DE AD BE EF" style="flex:1"><button onclick="ui.benchSend()">Send</button></div></div>
+
+      <div class="bench-section"><h4>${svg('gauge')} OBD-II live data</h4>
+        <div class="muted" style="margin-bottom:6px">Standardized SAE J1979 PIDs — universal scan-tool data, no reverse engineering. Toggle PIDs, then read or poll.</div>
+        <div class="row"><input id="obReq" value="0x7E0" style="width:90px"><input id="obRsp" value="0x7E8" style="width:90px"><button class="primary" onclick="ui.benchObd()">Read</button><label class="ck"><input type="checkbox" id="obLoop" onchange="ui.benchObdLoop()"> poll</label></div>
+        <div id="obPids" class="pid-chips" style="margin-top:8px"></div>
+        <div id="obOut" class="obd-grid" style="margin-top:8px"></div></div>
+
+      <div class="bench-section"><h4>${svg('bolt')} Actuate — labeled commands</h4>
+        <div class="muted" style="margin-bottom:6px">Press a saved command to send it — every press is confirm-before-energize and logged to the project record.</div>
+        <div id="cmdBtns" class="cmd-btns"></div>
+        <details class="adhoc"><summary>Ad-hoc command console</summary>
+          <div class="row" style="margin-top:8px"><select id="acKind"><option value="uds_io">UDS IO control (0x2F)</option><option value="uds_routine">UDS routine (0x31)</option><option value="uds_write">UDS write DID (0x2E)</option><option value="uds_read">UDS read DID (0x22)</option><option value="raw">Raw frame</option><option value="dbc">DBC signal</option></select>
+            <input id="acReq" value="0x7E0" style="width:84px" title="request id"><input id="acRsp" value="0x7E8" style="width:84px" title="response id"></div>
+          <div class="row" style="margin-top:6px"><input id="acDid" placeholder="DID / routine id (0x4A01)" style="flex:1"><input id="acControl" placeholder="control (short_term_adjust / start)" style="flex:1"><input id="acVal" placeholder="value hex (01)" style="width:110px"></div>
+          <div class="row" style="margin-top:6px"><input id="acArb" placeholder="raw id (6C0)" style="width:100px"><input id="acData" placeholder="raw data (DEAD)" style="flex:1"><input id="acMsg" placeholder="DBC msg" style="width:120px"><input id="acSig" placeholder="Sig=Val,Sig2=Val" style="flex:1"></div>
+          <div class="row" style="margin-top:6px"><label class="ck">security&nbsp;lvl&nbsp;<input id="acSec" value="0" style="width:44px"></label><select id="acAlgo" title="seed/key algorithm"></select><input id="acName" placeholder="label (to save as a button)" style="flex:1"><button onclick="ui.benchRunAdhoc()">Run</button><button onclick="ui.benchSaveAdhoc()">Save</button></div>
+        </details>
+        <div id="cmdOut" class="cmd-out" style="margin-top:8px"></div></div>
+
+      <div class="bench-section"><h4>${svg('search')} Learn a command (capture → label)</h4>
+        <div class="muted" style="margin-bottom:6px">Arm capture, trigger the function from a bidirectional scan tool (or the in-car switch), then Diff — Canopy reassembles the request and proposes a labeled command.</div>
+        <div class="row"><input id="capReq" value="0x7E0" style="width:90px"><input id="capRsp" value="0x7E8" style="width:90px"><button id="capArmBtn" onclick="ui.benchCaptureArm()">Arm capture</button><button class="primary" onclick="ui.benchCaptureDiff()">Diff &amp; propose</button></div>
+        <div id="capOut" style="margin-top:8px"></div></div>
+
       <div class="bench-section"><h4>Live traffic</h4><div class="frame-log" id="bFrames"><span class="muted">Connect to see frames.</span></div></div>`;
     this.benchLoadInterfaces(); this.benchRefreshStatus(); this.benchRestbusRefresh();
+    this.benchLoadObd(); this.benchLoadAlgos(); this.benchLoadCommands();
+  },
+  async benchLoadObd() {
+    try {
+      const cat = await api.get('/api/obd/catalog'); state.obdCatalog = cat;
+      if (!state.obdPids) state.obdPids = new Set([0x0C, 0x0D, 0x05, 0x04, 0x11, 0x42]);
+      const box = el('obPids'); if (box) box.innerHTML = cat.map(p =>
+        `<span class="pid-chip ${state.obdPids.has(p.pid) ? 'on' : ''}" onclick="ui.benchObdToggle(${p.pid})">${esc(p.name)}</span>`).join('');
+    } catch {}
+  },
+  benchObdToggle(pid) { if (!state.obdPids) state.obdPids = new Set();
+    state.obdPids.has(pid) ? state.obdPids.delete(pid) : state.obdPids.add(pid); this.benchLoadObd(); },
+  async benchObd() {
+    const out = el('obOut'); const pids = [...(state.obdPids || [])];
+    if (!pids.length) { out.innerHTML = '<span class="muted">Toggle at least one PID.</span>'; return; }
+    try {
+      const r = await api.send('/api/can/obd', 'POST', { pids, request_id: el('obReq').value, response_id: el('obRsp').value });
+      out.innerHTML = r.readings.map(x => `<div class="obd-cell"><div class="ov">${x.value == null ? '—' : esc(x.value)}<small>${esc(x.unit)}</small></div><div class="on">${esc(x.name)}</div></div>`).join('');
+    } catch (e) { out.innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
+  },
+  benchObdLoop() { if (state.obdLoopTimer) { clearInterval(state.obdLoopTimer); state.obdLoopTimer = null; }
+    if (el('obLoop').checked) { this.benchObd(); state.obdLoopTimer = setInterval(() => this.benchObd(), 1500); } },
+  async benchLoadAlgos() { try { const a = await api.get('/api/seedkey/algos'); const s = el('acAlgo'); if (s) s.innerHTML = a.map(n => `<option>${esc(n)}</option>`).join(''); } catch {} },
+  async benchLoadCommands() {
+    const box = el('cmdBtns'); if (!box) return;
+    if (!state.current) { box.innerHTML = '<span class="muted">Open a project to save &amp; reuse labeled commands.</span>'; return; }
+    try {
+      const cmds = await api.get(`/api/vehicles/${state.current.id}/profile/commands`); state.profileCommands = cmds;
+      box.innerHTML = cmds.length ? cmds.map((c, i) =>
+        `<span class="cmd-pair"><button class="cmd-btn" onclick="ui.benchRunProfile(${i})" title="${esc(c.kind)} ${esc(c.did || c.message || '')}">${svg('bolt')} ${esc(c.name)}</button><button class="cmd-x" title="Delete" onclick="ui.benchDeleteCmd(${i})">${svg('trash')}</button></span>`).join('')
+        : '<span class="muted">No saved commands yet — learn one below, or use the ad-hoc console.</span>';
+    } catch { box.innerHTML = ''; }
+  },
+  benchRunProfile(i) { const c = (state.profileCommands || [])[i]; if (c) this.benchRunCommand(c, `Send "${c.name}" to the module?`); },
+  async benchRunCommand(spec, confirmMsg) {
+    if (confirmMsg && !confirm(confirmMsg + '\n\nConfirm the bench is wired and power/current limit are correct before energizing.')) return;
+    const out = el('cmdOut'); out.innerHTML = '<span class="spinner"></span> sending…';
+    try {
+      const body = { spec, key_algo: (el('acAlgo') || {}).value || '', vehicle_id: state.current?.id || null };
+      const r = await api.send('/api/can/command', 'POST', body);
+      out.innerHTML = `<div class="cmd-res ${r.positive ? 'ok' : 'bad'}">${r.positive ? svg('check') : svg('warn')} ${esc(r.summary || '')}</div>`;
+    } catch (e) { out.innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
+  },
+  adhocSpec() {
+    const sig = {}; (el('acSig').value || '').split(',').forEach(p => { const [a, b] = p.split('='); if (a && b !== undefined) sig[a.trim()] = parseFloat(b); });
+    const sec = +el('acSec').value || 0;
+    return { name: (el('acName').value || '').trim() || undefined, kind: el('acKind').value,
+      request_id: el('acReq').value, response_id: el('acRsp').value,
+      did: el('acDid').value, control: el('acControl').value, value_hex: el('acVal').value.replace(/\s/g, ''),
+      arbitration_id: el('acArb').value, data_hex: el('acData').value.replace(/\s/g, ''),
+      message: el('acMsg').value, signals: sig,
+      requires: { session: sec > 0 ? 3 : 1, security_level: sec } };
+  },
+  benchRunAdhoc() { this.benchRunCommand(this.adhocSpec(), 'Run this ad-hoc command?'); },
+  benchSaveAdhoc() { const s = this.adhocSpec(); if (!s.name) { alert('Give the command a label first.'); return; } this.benchSaveCommand(s); },
+  async benchSaveCommand(command) {
+    if (!state.current) { alert('Open a project to save commands.'); return; }
+    try { await api.send(`/api/vehicles/${state.current.id}/profile/commands`, 'POST', { command }); aiToast.done('Saved as button'); this.benchLoadCommands(); }
+    catch (e) { alert(e.message); }
+  },
+  async benchDeleteCmd(i) { if (!state.current || !confirm('Delete this command?')) return; try { await api.send(`/api/vehicles/${state.current.id}/profile/commands/${i}`, 'DELETE'); this.benchLoadCommands(); } catch (e) { alert(e.message); } },
+  async benchCaptureArm() {
+    try { const r = await api.send('/api/can/capture/mark', 'POST'); state.capSince = r.since;
+      const b = el('capArmBtn'); if (b) b.textContent = 'Armed ✓';
+      el('capOut').innerHTML = '<span class="muted">Armed. Trigger the function on your scan tool / switch, then click Diff.</span>'; }
+    catch (e) { alert(e.message); }
+  },
+  async benchCaptureDiff() {
+    const out = el('capOut'); out.innerHTML = '<span class="spinner"></span> analyzing capture…';
+    try {
+      const r = await api.send('/api/can/capture/diff', 'POST', { since: state.capSince || 0, request_id: el('capReq').value, response_id: el('capRsp').value });
+      if (!r.found) { out.innerHTML = '<span class="warn">No diagnostic request found. Arm, trigger the function, then Diff.</span>'; return; }
+      const c = r.command; state.proposed = c;
+      out.innerHTML = `<div class="propose"><div class="row"><b>Proposed:</b> <span class="tagchip">${esc(c.kind)}</span>${c.did ? ` <span class="tagchip">DID ${esc(c.did)}</span>` : ''}${c.control ? ` <span class="tagchip">${esc(c.control)}</span>` : ''}</div>
+        <div class="muted" style="margin:6px 0;font-family:ui-monospace;font-size:11px">req: ${esc(r.request_hex)}${r.response_hex ? ` · resp: ${esc(r.response_hex)} (${r.positive ? 'positive' : esc(r.nrc_name || 'negative')})` : ''}</div>
+        <div class="row"><input id="capName" placeholder="Label, e.g. A/C clutch ON" style="flex:1"><button class="primary" onclick="ui.benchSaveProposed()">Save as button</button></div></div>`;
+    } catch (e) { out.innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
+  },
+  async benchSaveProposed() {
+    const c = Object.assign({}, state.proposed, { name: (el('capName').value || '').trim() });
+    if (!c.name) { alert('Give it a label.'); return; }
+    delete c.request_hex; delete c.response_hex;
+    await this.benchSaveCommand(c);
+    el('capOut').innerHTML = '<span class="ok-badge yes">Saved — find it under Actuate.</span>';
   },
   async benchDbcUpload() {
     const f = el('rbFile') && el('rbFile').files[0]; if (!f) { alert('Choose a .dbc file first.'); return; }
